@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 import time
 import base64
+import inflect
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment
 from openpyxl import load_workbook
@@ -813,15 +814,18 @@ with st.sidebar:
 )
 
     # Check input
+     # Check input
     if isinstance(date_range, tuple) and len(date_range) == 2:
         START_DATE, END_DATE = date_range
-
         if date_range != default_range:
             if not START_DATE or not END_DATE:
                 st.warning("⚠️ Please select both a start and an end date.")
                 date_selected = False
             elif START_DATE > END_DATE:
                 st.error("🚫 Invalid range: Start date cannot be after end date.")
+                date_selected = False
+            elif START_DATE == END_DATE:
+                st.error("🚫 Invalid range: Start date and end date cannot be the same.")
                 date_selected = False
             else:
                 start_date = format_pretty_date(START_DATE)
@@ -832,7 +836,6 @@ with st.sidebar:
             date_selected = False
     else:
         date_selected = False
-                        
 # Sidebar for file upload and download options
 
 if date_selected:# File Upload Section
@@ -928,17 +931,95 @@ if date_selected:# File Upload Section
 
         
         #Publication Name
-            pub_table = pd.crosstab(finaldata['Publication Name'], finaldata['Entity'])
-            pub_table['Total'] = pub_table.sum(axis=1)
-            pubs_table = pub_table.sort_values('Total', ascending=False).round()
+            finaldata['Journalist'] = (finaldata['Journalist'].astype(str).str.split(',').apply(lambda x: [j.strip() for j in x]))
+            finaldata = finaldata.explode('Journalist')
+    
+            jr_tab = pd.crosstab(finaldata['Journalist'], finaldata['Entity'])
+            jr_tab = jr_tab.reset_index(level=0)
+            newdata = finaldata[['Journalist', 'Publication Name']]
+            Journalist_Table = pd.merge(jr_tab, newdata, how='inner', left_on=['Journalist'], right_on=['Journalist'])
+            Journalist_Table.drop_duplicates(subset=['Journalist'], keep='first', inplace=True)
+            valid_columns = Journalist_Table.select_dtypes(include='number').columns
+            Journalist_Table['Total'] = Journalist_Table[valid_columns].sum(axis=1)
+            Jour_table = Journalist_Table.sort_values('Total', ascending=False).round()
+            bn_row = Jour_table.loc[Jour_table['Journalist'] == 'Bureau News']
+            Jour_table = Jour_table[Jour_table['Journalist'] != 'Bureau News']
+            Jour_table = pd.concat([Jour_table, bn_row], ignore_index=True)
+    #         Jour_table = Journalist_Table.reset_index(drop=True)
+            Jour_table.loc['GrandTotal'] = Jour_table.sum(numeric_only=True, axis=0)
+            columns_to_convert = Jour_table.columns.difference(['Journalist', 'Publication Name'])
+            Jour_table[columns_to_convert] = Jour_table[columns_to_convert].astype(int)
+            Jour_table.insert(1, 'Publication Name', Jour_table.pop('Publication Name'))
+            Jour_table1 = Jour_table.head(10)
+    
+            #UNIQUE_ARTICLES_WRITTEN_BY_JOURNALIST
+            finaldatau = finaldata.copy()
+            finaldatau.drop_duplicates(subset=['Date','Headline','Publication Name','Journalist'], keep='first', inplace=True, ignore_index=True)
+        
+            jr_tabu = finaldatau['Journalist'].value_counts().reset_index()
+            jr_tabu.columns = ['Journalist', 'Total']
+            newdatau = finaldatau[['Journalist', 'Publication Name']]
+            Journalist_Tableu = pd.merge(jr_tabu, newdatau, how='inner', left_on=['Journalist'], right_on=['Journalist'])
+            Journalist_Tableu.drop_duplicates(subset=['Journalist'], keep='first', inplace=True)
+            Jour_tableu = Journalist_Tableu.sort_values('Total', ascending=False).round()
+            bn_rowu = Jour_tableu.loc[Jour_tableu['Journalist'] == 'Bureau News']
+            Jour_tableu = Jour_tableu[Jour_tableu['Journalist'] != 'Bureau News']
+            Jour_tableu = pd.concat([Jour_tableu, bn_rowu], ignore_index=True)
+            Jour_tableu.loc['Total'] = Jour_tableu.sum(numeric_only=True, axis=0)
+            columns_to_convert = Jour_tableu.columns.difference(['Journalist', 'Publication Name'])
+            Jour_tableu[columns_to_convert] = Jour_tableu[columns_to_convert].astype(int)
+            Jour_tableu.insert(1, 'Publication Name', Jour_tableu.pop('Publication Name'))
+            Jour_tableu.loc[Jour_tableu['Journalist'] == 'Bureau News', 'Publication Name'] = 'Across Publications'
+            numeric_cols_u = Jour_tableu.select_dtypes(include='number').columns
+            cols_to_drop_u = [col for col in numeric_cols_u if col != 'Total']
+            Jour_tableu = Jour_tableu.drop(columns=cols_to_drop_u)
+            numeric_cols_t = Jour_table.select_dtypes(include='number').columns
+            numeric_cols_t = [col for col in numeric_cols_t if col != 'Total']
+            cols_to_use_t = ['Journalist'] + numeric_cols_t
+            Jour_table_subset = Jour_table[cols_to_use_t]
+            Unique_Articles = Jour_tableu.merge(Jour_table_subset, on='Journalist', how='left')
+            cols = list(Unique_Articles.columns)
+            cols.remove('Total')
+            cols.append('Total')
+            Unique_Articles = Unique_Articles[cols]
+            bn_index = Unique_Articles[Unique_Articles['Journalist'] == 'Bureau News' ].index
+            Unique_Articles.loc[bn_index+1, 'Journalist'] = 'Total'
+            ordered_cols = ['Journalist', 'Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in Unique_Articles.columns] + (['Total'] if 'Total' in Unique_Articles.columns else [])
+            Unique_Articles = Unique_Articles[ordered_cols]
+            Unique_Articles['Client %'] = ((Unique_Articles[client_columndt] / Unique_Articles['Total']) * 100).round().astype(int)
+
+            pub_table1 = pd.crosstab(finaldata['Publication Name'], finaldata['Entity'])
+            pub_table1 = pub_table1.reset_index(level=0)
+            pub_table = finaldatau['Publication Name'].value_counts().reset_index()
+            pub_table.columns = ['Publication Name', 'Total']
+            # Get all numeric columns in Jour_tableu
+            numeric_cols_u = pub_table.select_dtypes(include='number').columns
+            # Determine which numeric columns to drop (all except 'Total')
+            cols_to_drop_u = [col for col in numeric_cols_u if col != 'Total']
+            pub_table = pub_table.drop(columns=cols_to_drop_u)
+            numeric_cols_t = pub_table1.select_dtypes(include='number').columns
+            numeric_cols_t = [col for col in numeric_cols_t if col != 'Total']
+            cols_to_use_t = ['Publication Name'] + numeric_cols_t
+            pub_table_subset = pub_table1[cols_to_use_t]
+            Unique_pub = pub_table.merge(pub_table_subset, on='Publication Name', how='left')
+            cols = list(Unique_pub.columns)
+            cols.remove('Total')
+            cols.append('Total')
+            pubs_table = Unique_pub[cols]
+
+            ordered_cols = ['Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in pubs_table.columns] + (['Total'] if 'Total' in pubs_table.columns else [])
+            pubs_table = pubs_table[ordered_cols]
+            pubs_table = pubs_table.sort_values('Total', ascending=False).round()
             pubs_table.loc['Total'] = pubs_table.sum(numeric_only=True, axis=0)
-            pubs_table = pd.DataFrame(pubs_table.to_records())
-            client_column = [col for col in pubs_table.columns if col.startswith("Client-")][0]
-            ordered_cols = ['Publication Name', client_column] + [ent for ent in sov_order_no_client if ent in pubs_table.columns] + (['Total'] if 'Total' in pubs_table.columns else [])
-            pubs_table= pubs_table[ordered_cols]
-            pubs_table['Client %'] = ((pubs_table[client_column] / pubs_table['Total']) * 100).round().astype(int)
-            pubs_table2O = pubs_table.head(20)
+            pubs_table['Client %'] = ((pubs_table[client_columndt] / pubs_table['Total']) * 100).round().astype(int)
+            numeric_columns = pubs_table.select_dtypes(include=['number']).columns
+            pubs_table[numeric_columns] = pubs_table[numeric_columns].astype(int)
+            
             pubs_table1 = pubs_table.head(10)
+            pubs_table2O=  pubs_table.head(20)
+            pubs_table2O =pubs_table2O.rename(columns= {'Total': 'Total Unique Articles'})
+
+
 
             # Extract the top 3 publications and their counts
             top_1 = pubs_table1.iloc[0:1]  # First publication
@@ -1013,6 +1094,20 @@ if date_selected:# File Upload Section
             top10_pub_sum = pubs_table_trimmed[client_column].sort_values(ascending=False).head(10).sum()
             client_sov_count = int(Entity_SOV3.loc[Entity_SOV3["Entity"] == client_column, "News Count"].values[0])
             top10_pub_perc = int(round(( top10_pub_sum / client_sov_count) * 100))
+
+            client_sov = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Total',client_column].values[0]
+            bureau_articles = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Bureau News',client_column].values[0]
+            individual_articles = client_sov-bureau_articles
+            bureau_percentage = int(round((bureau_articles / client_sov) * 100,0))
+            individual_percentage = int(round((individual_articles / client_sov) * 100,0))
+            filtered_df = Unique_Articles[~Unique_Articles['Journalist'].isin(['Total', 'Bureau News'])]
+            total_journalists = len(filtered_df)
+            total_articles = filtered_df[filtered_df['Total'].notna() & (filtered_df['Total'] > 0)]['Total'].sum()
+            non_zero_journalists = filtered_df[filtered_df[client_column] > 0].shape[0]
+            articles_for_client = filtered_df[filtered_df[client_column] > 0][client_column].sum()
+            client_journalist_percentage =  int(round((non_zero_journalists/ total_journalists) * 100,0))
+            engage_with = total_journalists-non_zero_journalists
+        
     
             # Save them in separate DataFrames
             df_topc1 = topc_1.reset_index(drop=True)
@@ -1043,6 +1138,11 @@ if date_selected:# File Upload Section
             PType_Entity = pd.DataFrame(PType_Entity.to_records())
             ordered_cols = ['Publication Type', client_columndt] + [ent for ent in sov_order_no_client if ent in PType_Entity.columns] + (['Total'] if 'Total' in PType_Entity.columns else [])
             PType_Entity = PType_Entity[ordered_cols]
+            excluded_df = PType_Entity.sort_values(by=client_columndt, ascending=False)
+            p = inflect.engine()
+            publication_types = excluded_df['Publication Type'].unique()[3:].tolist()
+            publication_types_str = p.join(publication_types)
+
            
             # Extract the top 3 publications and their counts
             topt_1 = PType_Entity.iloc[0:1]  # First publication
@@ -1149,64 +1249,6 @@ if date_selected:# File Upload Section
             # topp_3_count = df_topp3.iloc[0][client_column]
     
             # Journalist Table
-            finaldata['Journalist'] = (finaldata['Journalist'].astype(str).str.split(',').apply(lambda x: [j.strip() for j in x]))
-            finaldata = finaldata.explode('Journalist')
-    
-            jr_tab = pd.crosstab(finaldata['Journalist'], finaldata['Entity'])
-            jr_tab = jr_tab.reset_index(level=0)
-            newdata = finaldata[['Journalist', 'Publication Name']]
-            Journalist_Table = pd.merge(jr_tab, newdata, how='inner', left_on=['Journalist'], right_on=['Journalist'])
-            Journalist_Table.drop_duplicates(subset=['Journalist'], keep='first', inplace=True)
-            valid_columns = Journalist_Table.select_dtypes(include='number').columns
-            Journalist_Table['Total'] = Journalist_Table[valid_columns].sum(axis=1)
-            Jour_table = Journalist_Table.sort_values('Total', ascending=False).round()
-            bn_row = Jour_table.loc[Jour_table['Journalist'] == 'Bureau News']
-            Jour_table = Jour_table[Jour_table['Journalist'] != 'Bureau News']
-            Jour_table = pd.concat([Jour_table, bn_row], ignore_index=True)
-    #         Jour_table = Journalist_Table.reset_index(drop=True)
-            Jour_table.loc['GrandTotal'] = Jour_table.sum(numeric_only=True, axis=0)
-            columns_to_convert = Jour_table.columns.difference(['Journalist', 'Publication Name'])
-            Jour_table[columns_to_convert] = Jour_table[columns_to_convert].astype(int)
-            Jour_table.insert(1, 'Publication Name', Jour_table.pop('Publication Name'))
-            Jour_table1 = Jour_table.head(10)
-    
-            #UNIQUE_ARTICLES_WRITTEN_BY_JOURNALIST
-            finaldatau = finaldata
-            finaldatau.drop_duplicates(subset=['Date','Headline','Publication Name','Journalist'], keep='first', inplace=True, ignore_index=True)
-            jr_tabu = finaldatau['Journalist'].value_counts().reset_index()
-            jr_tabu.columns = ['Journalist', 'Total']
-            newdatau = finaldatau[['Journalist', 'Publication Name']]
-            Journalist_Tableu = pd.merge(jr_tabu, newdatau, how='inner', left_on=['Journalist'], right_on=['Journalist'])
-            Journalist_Tableu.drop_duplicates(subset=['Journalist'], keep='first', inplace=True)
-            Jour_tableu = Journalist_Tableu.sort_values('Total', ascending=False).round()
-            bn_rowu = Jour_tableu.loc[Jour_tableu['Journalist'] == 'Bureau News']
-            Jour_tableu = Jour_tableu[Jour_tableu['Journalist'] != 'Bureau News']
-            Jour_tableu = pd.concat([Jour_tableu, bn_rowu], ignore_index=True)
-            Jour_tableu.loc['Total'] = Jour_tableu.sum(numeric_only=True, axis=0)
-            columns_to_convert = Jour_tableu.columns.difference(['Journalist', 'Publication Name'])
-            Jour_tableu[columns_to_convert] = Jour_tableu[columns_to_convert].astype(int)
-            Jour_tableu.insert(1, 'Publication Name', Jour_tableu.pop('Publication Name'))
-            Jour_tableu.loc[Jour_tableu['Journalist'] == 'Bureau News', 'Publication Name'] = 'Across Publications'
-            numeric_cols_u = Jour_tableu.select_dtypes(include='number').columns
-            cols_to_drop_u = [col for col in numeric_cols_u if col != 'Total']
-            Jour_tableu = Jour_tableu.drop(columns=cols_to_drop_u)
-            numeric_cols_t = Jour_table.select_dtypes(include='number').columns
-            numeric_cols_t = [col for col in numeric_cols_t if col != 'Total']
-            cols_to_use_t = ['Journalist'] + numeric_cols_t
-            Jour_table_subset = Jour_table[cols_to_use_t]
-            Unique_Articles = Jour_tableu.merge(Jour_table_subset, on='Journalist', how='left')
-            cols = list(Unique_Articles.columns)
-            cols.remove('Total')
-            cols.append('Total')
-            Unique_Articles = Unique_Articles[cols]
-            bn_index = Unique_Articles[Unique_Articles['Journalist'] == 'Bureau News' ].index
-            Unique_Articles.loc[bn_index+1, 'Journalist'] = 'Total'
-            ordered_cols = ['Journalist', 'Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in Unique_Articles.columns] + (['Total'] if 'Total' in Unique_Articles.columns else [])
-            Unique_Articles = Unique_Articles[ordered_cols]
-            Unique_Articles['Client %'] = ((Unique_Articles[client_column] / Unique_Articles['Total']) * 100).round().astype(int)
-    
-    
-            
             Unique_Articles1O = Unique_Articles.head(10)
             Unique_Articles2O = Unique_Articles.head(20)
             Unique_Articles2O = Unique_Articles2O.rename(columns={'Total': 'Total Unique Articles'})
@@ -1309,52 +1351,30 @@ if date_selected:# File Upload Section
             #     raise ValueError("No columns starting with 'Client-' were found.")
             client_columns = [col for col in Unique_Articles1O.columns if col.startswith("Client-")][0]
             Unique_Articles1O = Unique_Articles1O.rename(columns={'Total': 'Total Unique Articles'})
-    
-            # Select the "Publication Name" column and the dynamically identified client column
-            selected_column = Unique_Articles1O[["Journalist","Publication Name", client_columns]]
-            
-            selected_column = selected_column.iloc[:-1]
-            selected_column = selected_column.sort_values(by=client_columns, ascending=False)
-    
-            # Extract the top 3 publications and their counts
-            topjr_1 = selected_column.iloc[0:1]  # First publication
-            topjr_2 = selected_column.iloc[1:2]  # Second publication
-            topjr_3 = selected_column.iloc[2:3]  # Third publication
-    
-            # Save them in separate DataFrames
-            df_topjr1 = topjr_1.reset_index(drop=True)
-            df_topjr2 = topjr_2.reset_index(drop=True)
-            df_topjr3 = topjr_3.reset_index(drop=True)
-    
-            # Extract publication name and count for the top 3
-            topjr_1_name = df_topjr1.iloc[0]["Journalist"]
-            topjr_1_count = df_topjr1.iloc[0][client_column]
-    
-            topjr_2_name = df_topjr2.iloc[0]["Journalist"]
-            topjr_2_count = df_topjr2.iloc[0][client_column]
-    
-            topjr_3_name = df_topjr3.iloc[0]["Journalist"]
-            topjr_3_count = df_topjr3.iloc[0][client_column]
-    
-            # Extract the top 3 publications and their counts
-            topjz_1 = selected_column.iloc[0:1]  # First publication
-            topjz_2 = selected_column.iloc[1:2]  # Second publication
-            topjz_3 = selected_column.iloc[2:3]  # Third publication
-    
-            # Save them in separate DataFrames
-            df_topjz1 = topjz_1.reset_index(drop=True)
-            df_topjz2 = topjz_2.reset_index(drop=True)
-            df_topjz3 = topjz_3.reset_index(drop=True)
-    
-            # Extract publication name and count for the top 3
-            topjz_1_name = df_topjz1.iloc[0]["Publication Name"]
-            # top_1_count = df_topjt1.iloc[0]["Total"]
-    
-            topjz_2_name = df_topjz2.iloc[0]["Publication Name"]
-            # top_2_count = df_topjt2.iloc[0]["Total"]
-    
-            topjz_3_name = df_topjz3.iloc[0]["Publication Name"]
-            # top_3_count = df_topjt3.iloc[0]["Total"]
+            filtered_df = Unique_Articles[~Unique_Articles['Journalist'].isin(['Bureau News', 'Total'])].sort_values(by=client_columns, ascending = False)
+            journalist_name1 = filtered_df.iloc[0]["Journalist"]
+            publication_name1 = filtered_df.iloc[0]["Publication Name"]
+            client_count1 = filtered_df.iloc[0][client_column]
+            if len(filtered_df)>=2:
+                journalist_name2 = filtered_df.iloc[1]["Journalist"]
+                publication_name2 = filtered_df.iloc[1]["Publication Name"]
+                client_count2 = filtered_df.iloc[1][client_column]
+                if len(filtered_df)>=3:
+                    journalist_name3 = filtered_df.iloc[2]["Journalist"]
+                    publication_name3 = filtered_df.iloc[2]["Publication Name"]
+                    client_count3 = filtered_df.iloc[2][client_column]
+                else:
+                    journalist_name3 = ""
+                    publication_name3 = ""
+                    client_count3 = 0
+            else:
+                journalist_name2 = ""
+                publication_name2 = ""
+                client_count2 = 0
+                journalist_name3 = ""
+                publication_name3 = ""
+                client_count3 = 0
+          
     
             # Find columns containing the word 'Client'
             client_columns = [col for col in Unique_Articles.columns if 'Client' in col]
@@ -1379,7 +1399,7 @@ if date_selected:# File Upload Section
             Jour_Comp= Jour_Comp[ordered_cols]
     
             Jour_Client = filtered_df1.head(10)
-            ordered_cols = ['Journalist', 'Publication Name',client_columndt] + [ent for ent in sov_order_no_client if ent in   Jour_Client.columns] +(['Total Unique Articles'] if 'Total Unique Articles' in Jour_Client.columns else [])
+            ordered_cols = ['Journalist', 'Publication Name',client_columndt] + [ent for ent in sov_order_no_client if ent in   Jour_Client.columns] 
             Jour_Client= Jour_Client[ordered_cols]
     
             # Extract the top 3 publications and their counts
@@ -1391,7 +1411,7 @@ if date_selected:# File Upload Section
                 topjc_3 = Jour_Comp.iloc[2:3]  # Third publication
                 df_topjc3 = topjc_3.reset_index(drop=True)
                 topjc_3_name = df_topjc3.iloc[0]["Journalist"]
-                topjc_3_count = df_topjc3.iloc[0][client_column]
+                topjc_3_count = df_topjc3.iloc[0]['Total Unique Articles']
             else:
                 topjc_3_name = ""
                 topjc_3_count = 0  # You can assign any default value for count
@@ -1406,10 +1426,10 @@ if date_selected:# File Upload Section
     
             # Extract publication name and count for the top 3
             topjc_1_name = df_topjc1.iloc[0]["Journalist"]
-            topjc_1_count = df_topjc1.iloc[0][client_column]
+            topjc_1_count = df_topjc1.iloc[0]['Total Unique Articles']
     
             topjc_2_name = df_topjc2.iloc[0]["Journalist"]
-            topjc_2_count = df_topjc2.iloc[0][client_column]
+            topjc_2_count = df_topjc2.iloc[0]['Total Unique Articles']
     
             
             # # Extract the top 3 journalits writing in comp and not on client and their counts
@@ -1441,7 +1461,7 @@ if date_selected:# File Upload Section
                 topjp_3 = Jour_Comp.iloc[2:3]  # Third publication
                 df_topjp3 = topjp_3.reset_index(drop=True)
                 topjp_3_name = df_topjp3.iloc[0]["Publication Name"]
-                topjp_3_count = df_topjp3.iloc[0][client_column]
+                topjp_3_count = df_topjp3.iloc[0]['Total Unique Articles']
             else:
                 topjp_3_name = ""
                 topjp_3_count = 0  # You can assign any default value for count
@@ -1460,7 +1480,32 @@ if date_selected:# File Upload Section
     
             topjp_2_name = df_topjp2.iloc[0]["Publication Name"]
             topjp_2_count = df_topjp2.iloc[0][client_column]
-    
+
+            journalist_client1 = Jour_Client.iloc[0]["Journalist"]
+            publication_client1 = Jour_Client.iloc[0]["Publication Name"]
+            jour_client1 = Jour_Client.iloc[0][client_column]
+            if len(Jour_Client)>=2:
+                journalist_client2 = Jour_Client.iloc[1]["Journalist"]
+                publication_client2 = Jour_Client.iloc[1]["Publication Name"]
+                jour_client2 = Jour_Client.iloc[1][client_column]
+                if len(Jour_Client)>=3:
+                    journalist_client3 = Jour_Client.iloc[2]["Journalist"]
+                    publication_client3 = Jour_Client.iloc[2]["Publication Name"]
+                    jour_client3 = Jour_Client.iloc[2][client_column]
+                else:
+                    journalist_client3 = ""
+                    publication_client3 = ""
+                    our_client3 = 0
+            else:
+                journalist_client2 = ""
+                publication_client2 = ""
+                jour_client2 = 0
+                journalist_client3 = ""
+                publication_client3 = ""
+                jour_client3 = 0
+                
+            pubs_table =pubs_table.rename(columns= {'Total': 'Total Unique Articles'})
+            pubs_table.at[pubs_table.index[-1], 'Publication Name'] = 'Total'
            
     
     
@@ -1595,7 +1640,7 @@ if date_selected:# File Upload Section
             
             st.sidebar.write("## Download Report and Entity Sheets in Single Excel workbook")
             file_name_all = st.sidebar.text_input("Enter file name for Combined Excel", "Combined Excel.xlsx")
-            if st.sidebar.button("Download Combined File"):
+            if st.sidebar.button("Download Combined Excel"):
                 dfs = [Entity_SOV3, sov_dt11, pubs_table2O, Unique_Articles2O, PType_Entity, Jour_Comp, Jour_Client]
                 comments =['SOV Table', 'Month-on-Month Table', 'Publication Table', 'Journalist Table','Pub Type and Entity Table','Journ-on Comp, not Client','Journ-on Client, not Comp']
                         
@@ -1607,6 +1652,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 w1 = multiple_dfs(dfs, 'Tables', excel_io_all, comments, entity_info)
                 excel_io_all.seek(0)
                 wb = load_workbook(excel_io_all)
+                pubs_table.at[pubs_table.index[-1], 'Publication Name'] = 'Total'
                 dfs1 = [pubs_table, Unique_Articles]
                 comments1 = ['Publication Table', 'Journalist Table']
                 multiple_dfs1(dfs1, 'All Pub-Jour', wb, comments1)  # <-- this writes directly into base workbook
@@ -1648,7 +1694,7 @@ News search: All Articles: entity mentioned at least once in the article"""
             # "Publication type,Publication Name and Entity Table":ppe1,
             "Entity-wise Sheets": finaldata,                            # Add this option to download entity-wise sheets
             "Journalist writing on Comp not on Client" : Jour_Comp, 
-            "Journalist writing on Client not on Comp" : Jour_Client
+            "Journalist writing on Client & not on Comp" : Jour_Client
         } 
             selected_dataframe = st.selectbox("Select DataFrame to Preview:", list(dataframes_to_download.keys()))
             st.dataframe(dataframes_to_download[selected_dataframe])
@@ -1831,14 +1877,14 @@ News search: All Articles: entity mentioned at least once in the article"""
             p.font.bold = True
         
             sov_text = (
-            f"•{client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "•Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
-            "•IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "•IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
-            f"•{client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
-            f"•Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
-            f"•Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
-            f"•{client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
+            f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
+            "• Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
+            "• IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
+            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
+            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
+            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
+            f"• Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
+            f"• {client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
                 )
             sov_text_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
             sov_text_frame = sov_text_shape.text_frame
@@ -1848,47 +1894,76 @@ News search: All Articles: entity mentioned at least once in the article"""
         
             p = sov_text_frame.add_paragraph()
             p.text = (
-            f"•{client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "•Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
-            "•IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "•IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
-            f"•{client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
-            f"•Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
-            f"•Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
-            f"•{client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
+            f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
+            "• Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
+            "• IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
+            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
+            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
+            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
+            f"• Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
+            f"• {client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
             )
             p.font.size = Pt(18)
             p.font.name = 'Gill Sans'
         
-            # Add Source text
-            source_text = ("Publications :")
-            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.8), Inches(14), Inches(1))
-            source_frame = source_shape.text_frame
-            source_frame.word_wrap = True
-            source_frame.clear()  # Clear any default paragraph
-            p = source_frame.add_paragraph()
-            p.text = "Publications :"
+        #     # Add Source text
+        #     source_text = ("Publications :")
+        #     source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.8), Inches(14), Inches(1))
+        #     source_frame = source_shape.text_frame
+        #     source_frame.word_wrap = True
+        #     source_frame.clear()  # Clear any default paragraph
+        #     p = source_frame.add_paragraph()
+        #     p.text = "Publications :"
+        #     p.font.size = Pt(20)
+        #     p.font.name = 'Gill Sans'
+        #     p.font.underline = True
+        #     p.font.bold = True
+        
+        
+        #     source_text = (
+        #     f"•The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} articles, followed by {top_2_name} with {top_2_count} articles, and {top_3_name} with {top_3_count} articles.\n"
+        # f"•Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
+        # f"•The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count}  articles).\n" 
+        # )
+        #     source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.1), Inches(14), Inches(1))
+        #     source_frame = source_shape.text_frame
+        #     source_frame.word_wrap = True
+        #     source_frame.clear()  # Clear any default paragraph
+        #     p = source_frame.add_paragraph()
+        #     p.text = (
+        #     f"•The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} articles, followed by {top_2_name} with {top_2_count} articles, and {top_3_name} with {top_3_count} articles.\n"
+        # f"•Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
+        # f"•The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count} articles).\n" 
+        # )
+        #     p.font.size = Pt(18)
+        #     p.font.name = 'Gill Sans'
+
+              # Add News Search text
+            news_search_text = ("Publication Types :" )
+            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
+            news_search_frame = news_search_shape.text_frame
+            news_search_frame.word_wrap = True
+            news_search_frame.clear()  # Clear any default paragraph
+            p = news_search_frame.add_paragraph()
+            p.text = "Publication Type :"
             p.font.size = Pt(20)
             p.font.name = 'Gill Sans'
             p.font.underline = True
             p.font.bold = True
         
-        
-            source_text = (
-            f"•The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} articles, followed by {top_2_name} with {top_2_count} articles, and {top_3_name} with {top_3_count} articles.\n"
-        f"•Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-        f"•The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count}  articles).\n" 
-        )
-            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.1), Inches(14), Inches(1))
-            source_frame = source_shape.text_frame
-            source_frame.word_wrap = True
-            source_frame.clear()  # Clear any default paragraph
-            p = source_frame.add_paragraph()
-            p.text = (
-            f"•The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} articles, followed by {top_2_name} with {top_2_count} articles, and {top_3_name} with {top_3_count} articles.\n"
-        f"•Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-        f"•The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count} articles).\n" 
-        )
+            news_search_text = (f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
+                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
+                f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n"
+                           )
+            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
+            news_search_frame = news_search_shape.text_frame
+            news_search_frame.word_wrap = True
+            news_search_frame.clear()  # Clear any default paragraph
+            p = news_search_frame.add_paragraph()
+            p.text = (f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
+                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
+        f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n"
+                           )
             p.font.size = Pt(18)
             p.font.name = 'Gill Sans'
         
@@ -1935,58 +2010,86 @@ News search: All Articles: entity mentioned at least once in the article"""
             p.font.bold = True
         
             # Add News Search text
-            news_search_text = (f"•The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} articles.\n"
-                            f"•Among the journalists specifically covering {client_name} are {topjr_1_name} from {topjz_1_name} with {topjr_1_count} articles , {topjr_2_name} from {topjz_2_name} has authored {topjr_2_count} articles  and {topjr_3_name} from {topjz_3_name} written {topjr_3_count} article.\n"
-                            f"•{client_name} has received a total of 44 articles in news coverage. Among these, 39 i.e 88% of the articles were filed by Bureaus, while the remaining 5 i.e 12% were written by individual journalists.\n"
-                            f"•A total of 387 journalists have written 1155 articles covering {client_name} and its competitors.\n"
-                            f"•Out of which, 5 journalists have specifically written 5 articles mentioning {client_name} i.e of the total journalists writing on IIT Ropar and its competitors only 1% of them have mentioned IIT Ropar in their articles.\n"
-                            f"•While this constitutes a very less number, there is an large opportunity for {client_name} to engage with the remaining 882 journalists to enhance its news coverage and reach.\n"
+            news_search_text = (f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
+                           f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles, {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} articles.\n"
+                            f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
+                            f"• A total of {total_journalists} journalists have written {total_articles} unique articles covering {client_name} and its competitors, out of which, {non_zero_journalists} journalists have specifically written {articles_for_client} articles mentioning {client_name} i.e of the total journalists writing on {client_name} and its competitors only {client_journalist_percentage}% them have mentioned {client_name} in their articles.\n"
+                           f"• A total of {engage_with} journalists have not mentioned {client_name} in their articles. Inorder to increase it's visibility {client_column} needs to engage with these {engage_with} journalists.\n"
                            )
             news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
             news_search_frame = news_search_shape.text_frame
             news_search_frame.word_wrap = True
             news_search_frame.clear()  # Clear any default paragraph
             p = news_search_frame.add_paragraph()
-            p.text = (f"•The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} articles.\n"
-                            f"•Among the journalists specifically covering {client_name} are {topjr_1_name} from {topjz_1_name} with {topjr_1_count} articles , {topjr_2_name} from {topjz_2_name} has authored {topjr_2_count} articles  and {topjr_3_name} from {topjz_3_name} written {topjr_3_count} article.\n"
-                            f"•{client_name} has received a total of 44 articles in news coverage. Among these, 39 i.e 88% of the articles were filed by Bureaus, while the remaining 5 i.e 12% were written by individual journalists.\n"
-                            f"•A total of 387 journalists have written 1155 articles covering {client_name} and its competitors.\n"
-                            f"•Out of which, 5 journalists have specifically written 5 articles mentioning {client_name} i.e of the total journalists writing on IIT Ropar and its competitors only 1% of them have mentioned IIT Ropar in their articles.\n"
-                            f"•While this constitutes a very less number, there is an large opportunity for {client_name} to engage with the remaining 882 journalists to enhance its news coverage and reach.\n"
+            p.text = (f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
+                           f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles, {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} article.\n"
+                            f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
+                            f"• A total of {total_journalists} journalists have written {total_articles} unique articles covering {client_name} and its competitors, out of which, {non_zero_journalists} journalists have specifically written {articles_for_client} articles mentioning {client_name} i.e of the total journalists writing on {client_name} and its competitors only {client_journalist_percentage}% them have mentioned {client_name} in their articles.\n"
+                           f"• A total of {engage_with} journalists have not mentioned {client_name} in their articles. Inorder to increase it's visibility {client_column} needs to engage with these {engage_with} journalists.\n"
                            )
             p.font.size = Pt(18)
             p.font.name = 'Gill Sans'
-        
-            # Add News Search text
-            news_search_text = ("Publication Types :" )
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = "Publication Type :"
+
+            # Add Source text
+            source_text = ("Publications :")
+            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.8), Inches(14), Inches(1))
+            source_frame = source_shape.text_frame
+            source_frame.word_wrap = True
+            source_frame.clear()  # Clear any default paragraph
+            p = source_frame.add_paragraph()
+            p.text = "Publications :"
             p.font.size = Pt(20)
             p.font.name = 'Gill Sans'
             p.font.underline = True
             p.font.bold = True
         
-            news_search_text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles of the total news coverage on {client_name}.\n"
-        "•IIT Madras and IIT Delhi dominates across all publication types, especially in general, business ,technology, and digital-first publications.\n"
-        f"•{client_name} may find value in engaging more with General and Business along with technology, and digital-first publications to expand her reach and visibility among broader audiences.\n"
-                           )
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles of the total news coverage on {client_name}.\n"
-        "•IIT Madras and IIT Delhi dominates across all publication types, especially in general, business ,technology, and digital-first publications.\n"
-        f"•{client_name} may find value in engaging more with General and Business along with technology, and digital-first publications to expand her reach and visibility among broader audiences.\n"
-                           )
+        
+            source_text = (
+            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
+        f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
+       
+        )
+            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.1), Inches(14), Inches(1))
+            source_frame = source_shape.text_frame
+            source_frame.word_wrap = True
+            source_frame.clear()  # Clear any default paragraph
+            p = source_frame.add_paragraph()
+            p.text = (
+            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
+        f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
+      
+        )
             p.font.size = Pt(18)
             p.font.name = 'Gill Sans'
+        
+        #     # Add News Search text
+        #     news_search_text = ("Publication Types :" )
+        #     news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
+        #     news_search_frame = news_search_shape.text_frame
+        #     news_search_frame.word_wrap = True
+        #     news_search_frame.clear()  # Clear any default paragraph
+        #     p = news_search_frame.add_paragraph()
+        #     p.text = "Publication Type :"
+        #     p.font.size = Pt(20)
+        #     p.font.name = 'Gill Sans'
+        #     p.font.underline = True
+        #     p.font.bold = True
+        
+        #     news_search_text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
+        #         f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
+        #         f"•{client_name} may find value in engaging more with {', '.join(publication_types[:-1])} and {publication_types[-1]} to expand her reach and visibility among broader audiences.\n"
+        #                    )
+        #     news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
+        #     news_search_frame = news_search_shape.text_frame
+        #     news_search_frame.word_wrap = True
+        #     news_search_frame.clear()  # Clear any default paragraph
+        #     p = news_search_frame.add_paragraph()
+        #     p.text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
+        #         f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
+        # f"•{client_name} may find value in engaging more with {', '.join(publication_types[:-1])} and {publication_types[-1]} to expand her reach and visibility among broader audiences.\n"
+        #                    )
+        #     p.font.size = Pt(18)
+        #     p.font.name = 'Gill Sans'
                 
             # Add title slide after the first slide
             slide_layout = prs.slide_layouts[6]
@@ -2031,11 +2134,11 @@ News search: All Articles: entity mentioned at least once in the article"""
             p.font.bold = True
         
         
-            time_period_text = (f"•{client_name} consistently maintains a high level of coverage throughout the months, with peak in month {topdt_1_name}.\n"
-        "•These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
-        f"•{client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
-        f"•While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
-        f"•{client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
+            time_period_text = (f"• {client_name} consistently maintains a high level of coverage throughout the months, with peak in month {topdt_1_name}.\n"
+        "• These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
+        f"• {client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
+        f"• While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
+        f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
         "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
         "2.Purohit allows IIT-Ropar to set up campus in Edu City.\n"
                            )
@@ -2047,10 +2150,10 @@ News search: All Articles: entity mentioned at least once in the article"""
         
             p = time_period_frame.add_paragraph()
             p.text = (f"•{client_name} consistently maintains a high level of coverage throughout the months, with peak in month {topdt_1_name}.\n"
-        "•These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
-        f"•{client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
-        f"•While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
-        f"•{client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
+        "• These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
+        f"• {client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
+        f"• While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
+        f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
         "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
         "2.Purohit allows IIT-Ropar to set up campus in Edu City.\n"
                            )
@@ -2064,39 +2167,40 @@ News search: All Articles: entity mentioned at least once in the article"""
             if st.sidebar.button("Download PowerPoint"):
                 # List of DataFrames to save
                 pubs_table1 = pubs_table.head(10)
+                numeric_columns = pubs_table1.select_dtypes(include=['number']).columns
+                pubs_table1[numeric_columns] = pubs_table1[numeric_columns].astype(int)
                 Jour_table1 = Jour_table.head(10)
                 dfs = [Entity_SOV3, sov_dt11, pubs_table1,Unique_Articles1O, PType_Entity, Jour_Comp, Jour_Client]
                 table_titles = [f'SOV Table of {client_name} and competition', f'Month-on-Month Table of {client_name} and competition', f'Publication Table on {client_name} and competition', f'Journalist writing on {client_name} and competition',
                             f'Publication Types writing on {client_name} and competition',f'Journalists writing on Comp and not on {client_name}', f'Journalists writing on {client_name} and not on Comp'
                             ]
-                textbox_text = [ f"•{client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "•Among these, IIT Madras dominates the conversation with 28% of the total SOV, indicating significant media coverage and visibility.\n"
-            "•IIT Delhi follows IIT Madras, capturing 25% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "•IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 21%, 17%, and 7% of the SOV respectively.\n"
-            f"•{client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e., last in the SOV.\n"
-            f"•Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.",
-               f"•{client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
+                textbox_text = [ f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
+            "• Among these, IIT Madras dominates the conversation with 28% of the total SOV, indicating significant media coverage and visibility.\n"
+            "• IIT Delhi follows IIT Madras, capturing 25% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
+            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 21%, 17%, and 7% of the SOV respectively.\n"
+            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e., last in the SOV.\n"
+            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.",
+               f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
             "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
             "2.Purohit allows IIT-Ropar to set up campus in Edu City\n"
             "3.UPES Runway Incubator Signs MoU With IIT Ropar’s Ihub – Awadh\n"
             "4.SKUAST-K, IIT Ropar hold 2-day event"
             , 
-            f"•The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} articles, followed by {top_2_name} with {top_2_count} articles, and {top_3_name} with {top_3_count} articles.\n"
-            f"•Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-           f"•The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count}  articles).\n" ,
-            f"•The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} articles.\n"
-            f"•Among the journalists specifically covering {client_name} are {topjr_1_name} from {topjz_1_name} with {topjr_1_count} articles , {topjr_2_name} from {topjz_2_name} has authored {topjr_2_count} articles  and {topjr_3_name} from {topjz_3_name} written {topjr_3_count} article.\n"
-            f"•{client_name} has received a total of 44 articles in news coverage. Among these, 39 i.e., 88% of the articles were filed by Bureaus, while the remaining 5 i.e., 12% were written by individual journalists.\n"
+            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
+            f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
+           f"• The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count}  articles).\n" ,
+            f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
+            f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles , {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} article.\n"
+           f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
             ,
-                           f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                                f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles of the total news coverage on {client_name}.\n"
-            f"•IIT Madras and IIT Delhi dominate across all publication types, especially in general, business, technology, and digital-first publications.\n"
-            f"•{client_name} may find value in engaging more with General and Business along with technology, and digital-first publications to expand its reach and visibility among broader audiences.\n",
+                           f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
+                                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
+            f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n",
         
-                                f"•The top journalists writing on competitors and not on {client_name}  are {topjc_1_name} from {topjp_1_name} with {topjc_1_count} articles, followed by {topjc_2_name} from {topjp_2_name} with {topjc_2_count} articles, and {topjc_3_name} from {topjp_3_name} with {topjc_3_count} articles.\n"
-        f"•These journalists have not written any articles on {client_name} so there is an opportunity for {client_name} to engage with these journalists to broaden its coverage and influence within the industry.\n",
+                                f"• The top journalists writing on competitors and not on {client_name}  are {topjc_1_name} from {topjp_1_name} with {topjc_1_count} unique articles, followed by {topjc_2_name} from {topjp_2_name} with {topjc_2_count} unique articles, and {topjc_3_name} from {topjp_3_name} with {topjc_3_count} unique articles.\n"
+        f"• These journalists have not written any articles on {client_name} so there is an opportunity for {client_name} to engage with these journalists to broaden its coverage and influence within the industry.\n",
         
-        f"•The  journalists reporting on {client_name} and not on its competitors are Navjeevan Gopal from The Indian Express with 1 article and Munieshwer A Sagar from TOI with 1 articles.\n",
+        f"• The journalists reporting on {client_name} and not on its competitors are {journalist_client1} from {publication_client1} with {jour_client1} article followed by {journalist_client2} from {publication_client2} with {jour_client2} articles.\n",
         
                               ]
               
