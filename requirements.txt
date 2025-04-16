@@ -9,6 +9,7 @@ nltk
 python-pptx
 wordcloud
 fuzzywuzzy
+gensim
 spacy
-
-
+requests
+inflect
