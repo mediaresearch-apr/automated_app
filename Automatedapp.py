@@ -1481,28 +1481,40 @@ if date_selected:# File Upload Section
             topjp_2_name = df_topjp2.iloc[0]["Publication Name"]
             topjp_2_count = df_topjp2.iloc[0][client_column]
 
-            journalist_client1 = Jour_Client.iloc[0]["Journalist"]
-            publication_client1 = Jour_Client.iloc[0]["Publication Name"]
-            jour_client1 = Jour_Client.iloc[0][client_column]
-            if len(Jour_Client)>=2:
-                journalist_client2 = Jour_Client.iloc[1]["Journalist"]
-                publication_client2 = Jour_Client.iloc[1]["Publication Name"]
-                jour_client2 = Jour_Client.iloc[1][client_column]
-                if len(Jour_Client)>=3:
-                    journalist_client3 = Jour_Client.iloc[2]["Journalist"]
-                    publication_client3 = Jour_Client.iloc[2]["Publication Name"]
-                    jour_client3 = Jour_Client.iloc[2][client_column]
+            if len(Jour_Client)>=1:
+                journalist_client1 = Jour_Client.iloc[0]["Journalist"]
+                publication_client1 = Jour_Client.iloc[0]["Publication Name"]
+                jour_client1 = Jour_Client.iloc[0][client_column]
+                if len(Jour_Client)>=2:
+                    journalist_client2 = Jour_Client.iloc[1]["Journalist"]
+                    publication_client2 = Jour_Client.iloc[1]["Publication Name"]
+                    jour_client2 = Jour_Client.iloc[1][client_column]
+                    if len(Jour_Client)>=3:
+                        journalist_client3 = Jour_Client.iloc[2]["Journalist"]
+                        publication_client3 = Jour_Client.iloc[2]["Publication Name"]
+                        jour_client3 = Jour_Client.iloc[2][client_column]
+                    else:
+                        journalist_client3 = ""
+                        publication_client3 = ""
+                        jour_client3 = 0
                 else:
+                    journalist_client2 = ""
+                    publication_client2 = ""
+                    jour_client2 = 0
                     journalist_client3 = ""
                     publication_client3 = ""
-                    our_client3 = 0
+                    jour_client3 = 0
             else:
+                journalist_client1 = ""
+                publication_client1 = ""
+                jour_client1 = 0
                 journalist_client2 = ""
                 publication_client2 = ""
                 jour_client2 = 0
                 journalist_client3 = ""
                 publication_client3 = ""
                 jour_client3 = 0
+                
                 
             pubs_table =pubs_table.rename(columns= {'Total': 'Total Unique Articles'})
             pubs_table.at[pubs_table.index[-1], 'Publication Name'] = 'Total'
