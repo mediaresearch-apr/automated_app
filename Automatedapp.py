@@ -194,7 +194,7 @@ if uploaded_files:
     
     # Fill missing values in 'Influencer' column with 'Bureau News'
     final_df['Influencer'] = final_df['Influencer'].fillna('Bureau News')
-    final_df['Date'] = pd.to_datetime(final_df['Date']).dt.normalize()
+    final_df['Date'] = (pd.to_datetime(final_df['Date'].str.strip(), format='%d-%b-%Y %I:%M%p',errors='coerce').dt.date.astype(str))  
     
     # Reorder the DataFrame
     final_df = final_df[new_order]
