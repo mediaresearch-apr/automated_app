@@ -1423,13 +1423,22 @@ if date_selected:# File Upload Section
             df_topjc1 = topjc_1.reset_index(drop=True)
             df_topjc2 = topjc_2.reset_index(drop=True)
             # df_topjc3 = topjc_3.reset_index(drop=True)
-    
-            # Extract publication name and count for the top 3
-            topjc_1_name = df_topjc1.iloc[0]["Journalist"]
-            topjc_1_count = df_topjc1.iloc[0]['Total Unique Articles']
-    
-            topjc_2_name = df_topjc2.iloc[0]["Journalist"]
-            topjc_2_count = df_topjc2.iloc[0]['Total Unique Articles']
+
+            # Initialize variables with default values
+            topjc_1_name = "N/A"
+            topjc_1_count = 0
+            topjc_2_name = "N/A"
+            topjc_2_count = 0
+
+            # Extract publication name and count for the top 1, if available
+            if not df_topjc1.empty:
+                topjc_1_name = df_topjc1.iloc[0]["Journalist"]
+                topjc_1_count = df_topjc1.iloc[0]['Total Unique Articles']
+
+            # Extract publication name and count for the top 2, if available
+            if not df_topjc2.empty:
+                topjc_2_name = df_topjc2.iloc[0]["Journalist"]
+                topjc_2_count = df_topjc2.iloc[0]['Total Unique Articles']
     
             
             # # Extract the top 3 journalits writing in comp and not on client and their counts
@@ -1474,12 +1483,22 @@ if date_selected:# File Upload Section
             df_topjp2 = topjp_2.reset_index(drop=True)
             # df_topjc3 = topjc_3.reset_index(drop=True)
     
-            # Extract publication name and count for the top 3
-            topjp_1_name = df_topjp1.iloc[0]["Publication Name"]
-            topjp_1_count = df_topjp1.iloc[0][client_column]
-    
-            topjp_2_name = df_topjp2.iloc[0]["Publication Name"]
-            topjp_2_count = df_topjp2.iloc[0][client_column]
+
+
+            try:
+                # Extract publication name and count for the top 3
+                topjp_1_name = df_topjp1.iloc[0]["Publication Name"] if not df_topjp1.empty else "N/A"
+                topjp_1_count = df_topjp1.iloc[0][client_column] if not df_topjp1.empty else 0
+
+                topjp_2_name = df_topjp2.iloc[0]["Publication Name"] if not df_topjp2.empty else "N/A"
+                topjp_2_count = df_topjp2.iloc[0][client_column] if not df_topjp2.empty else 0
+
+            except IndexError:
+                # Handle the case where the DataFrame is empty or index is out of bounds
+                topjp_1_name = "N/A"
+                topjp_1_count = 0
+                topjp_2_name = "N/A"
+                topjp_2_count = 0
 
             if len(Jour_Client)>=1:
                 journalist_client1 = Jour_Client.iloc[0]["Journalist"]
