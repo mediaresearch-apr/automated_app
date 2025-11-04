@@ -286,7 +286,8 @@ def create_entity_sheets(data, writer):
             worksheet.column_dimensions[col_letter].width = max_length + 2
 
         # Detect URLs and add hyperlink formatting
-        url_columns = [col for col in entity_df.columns if 'url' in col.lower()]
+        url_columns = [col for col in entity_df.columns if isinstance(col, str) and 'url' in col.lower()]
+        #url_columns = [col for col in entity_df.columns if 'url' in col.lower()]
         for url_col in url_columns:
             col_index = list(entity_df.columns).index(url_col) + 1
             col_letter = get_column_letter(col_index)
