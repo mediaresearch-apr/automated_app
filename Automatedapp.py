@@ -1640,7 +1640,7 @@ if date_selected and industry_provided :# File Upload Section
     
             
     
-            finaldata['Exclusivity'] = finaldata.apply(classify_exclusivity, axis=1)
+            #finaldata['Exclusivity'] = finaldata.apply(classify_exclusivity, axis=1)
     
             # # Define a dictionary of keywords for each entity
             # entity_keywords = {
@@ -1694,7 +1694,7 @@ if date_selected and industry_provided :# File Upload Section
                         return topic
                 return 'Other'
     
-            finaldata['Topic'] = finaldata['Headline'].apply(classify_topic)
+            #finaldata['Topic'] = finaldata['Headline'].apply(classify_topic)
     
             # Filter or select the row for which you need the client name
             filtered_rows = data[data["Entity"].str.contains("Client-", na=False)]
