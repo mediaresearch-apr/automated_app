@@ -1297,7 +1297,10 @@ if date_selected and industry_provided :# File Upload Section
             Unique_Articles1O = Unique_Articles1O.rename(columns={'Total': 'Total Unique Articles'})
             Unique_Articles = Unique_Articles.rename(columns={'Total': 'Total Unique Articles'})
             client_col_jour = [col for col in Unique_Articles.columns if col.startswith("Client-")][0]
-            low_mention_jour = Unique_Articles[Unique_Articles[client_col_jour].isin([0, 1])]
+            low_mention_jour = Unique_Articles[
+                (Unique_Articles[client_col_jour].isin([0, 1])) &
+                (~Unique_Articles['Journalist'].astype(str).str.strip().str.lower().eq('total'))
+            ]
             filtered_jour = low_mention_jour[low_mention_jour['Journalist'] != 'Bureau News']
             top3_jour = filtered_jour.sort_values('Total Unique Articles', ascending=False).head(3)
 
@@ -1572,19 +1575,46 @@ if date_selected and industry_provided :# File Upload Section
                 jour_client3 = 0
                 
                 
-            pubs_table =pubs_table.rename(columns= {'Total': 'Total Unique Articles'})
-            client_col_pub = [col for col in pubs_table.columns if col.startswith("Client-")][0]
-            low_mention_pubs = pubs_table[pubs_table[client_col_pub].isin([0, 1])]
-            top3_pubs = low_mention_pubs.sort_values('Total Unique Articles', ascending=False).head(3)
-            top3_pubs_list = top3_pubs['Publication Name'].tolist()
+            pubs_table = pubs_table.rename(columns={'Total': 'Total Unique Articles'})
 
-            if len(top3_pubs_list) > 1:
-                publications_str = ", ".join(top3_pubs_list[:-1]) + f" and {top3_pubs_list[-1]}"
+            # 2. Find the correct client column (Client-Tenet, Client-XYZ, etc.)
+            client_col_pub = [col for col in pubs_table.columns if col.startswith("Client-")][0]
+
+            # 3. CRITICAL: Remove the "Total" row + clean Publication Name in one go
+            pubs_clean = (
+                pubs_table
+                .drop(pubs_table.index[-1])           # exclude Total row
+                .copy()
+            )
+
+            # 4. Make sure Publication Name is always a clean string (this kills the float/NaN error)
+            pubs_clean['Publication Name'] = (
+                pubs_clean['Publication Name']
+                .fillna('Unknown Publication')   # replace NaN
+                .astype(str)                     # force everything to string
+                .str.strip()                     # remove extra spaces/tabs
+            )
+
+            # 5. Filter publications where our client has 0 or 1 mention
+            low_mention_pubs = pubs_clean[pubs_clean[client_col_pub].isin([0, 1])]
+
+            # 6. Get top 3 by total unique articles
+            top3_pubs = (
+                low_mention_pubs
+                .sort_values('Total Unique Articles', ascending=False)
+                .head(3)
+            )
+
+            # 7. Extract publication names as clean strings
+            top3_pubs_list = top3_pubs['Publication Name'].tolist()   # already strings!
+
+            # 8. Build the perfect English string
+            if len(top3_pubs_list) >= 2:
+                publications_str = f"{', '.join(top3_pubs_list[:-1])} and {top3_pubs_list[-1]}"
             elif len(top3_pubs_list) == 1:
                 publications_str = top3_pubs_list[0]
             else:
                 publications_str = "None"
-            pubs_table.at[pubs_table.index[-1], 'Publication Name'] = 'Total'
            
     
     
