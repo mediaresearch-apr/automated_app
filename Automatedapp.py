@@ -960,6 +960,7 @@ if date_selected and industry_provided :# File Upload Section
 
         
         #Publication Name
+            finaldata_non_exploded = finaldata.copy()
             finaldata['Journalist'] = (finaldata['Journalist'].astype(str).str.split(',').apply(lambda x: [j.strip() for j in x]))
             finaldata = finaldata.explode('Journalist')
     
@@ -1016,10 +1017,11 @@ if date_selected and industry_provided :# File Upload Section
             ordered_cols = ['Journalist', 'Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in Unique_Articles.columns] + (['Total'] if 'Total' in Unique_Articles.columns else [])
             Unique_Articles = Unique_Articles[ordered_cols]
             Unique_Articles['Client %'] = ((Unique_Articles[client_columndt] / Unique_Articles['Total']) * 100).round().astype(int)
-
-            pub_table1 = pd.crosstab(finaldata['Publication Name'], finaldata['Entity'])
+            pub_table1 = pd.crosstab(finaldata_non_exploded['Publication Name'], finaldata_non_exploded['Entity'])
             pub_table1 = pub_table1.reset_index(level=0)
-            pub_table = finaldatau['Publication Name'].value_counts().reset_index()
+            finaldatauq = finaldata_non_exploded.copy()
+            finaldatauq.drop_duplicates(subset=['Date','Headline','Publication Name','Journalist'], keep='first', inplace=True, ignore_index=True)
+            pub_table = finaldatauq['Publication Name'].value_counts().reset_index()
             pub_table.columns = ['Publication Name', 'Total']
             # Get all numeric columns in Jour_tableu
             numeric_cols_u = pub_table.select_dtypes(include='number').columns
@@ -1154,13 +1156,13 @@ if date_selected and industry_provided :# File Upload Section
             # topc_3_count = df_topc3.iloc[0][client_column]
 
 
-            PP = pd.crosstab(finaldata['Publication Name'], finaldata['Publication Type'])
+            PP = pd.crosstab(finaldata_non_exploded['Publication Name'], finaldata_non_exploded['Publication Type'])
             PP['Total'] = PP.sum(axis=1)
             PP_table = PP.sort_values('Total', ascending=False).round()
             PP_table.loc['GrandTotal'] = PP_table.sum(numeric_only=True, axis=0)
             
             #Publication Name & Entity Table
-            PT_Entity = pd.crosstab(finaldata['Publication Type'], finaldata['Entity'])
+            PT_Entity = pd.crosstab(finaldata_non_exploded['Publication Type'], finaldata_non_exploded['Entity'])
             PT_Entity['Total'] = PT_Entity.sum(axis=1)
             PType_Entity = PT_Entity.sort_values('Total', ascending=False).round()
             PType_Entity.loc['Total'] = PType_Entity.sum(numeric_only=True, axis=0)
