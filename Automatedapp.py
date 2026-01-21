@@ -1757,7 +1757,7 @@ if date_selected and industry_provided :# File Upload Section
                         
                 entity_info = f"""Entity:{client_name}
 Time Period of analysis: {start_date} to {end_date}
-Source: (Online) Meltwater, Select 100 online publications, which include Hybrid Media - Business, General & Technology and Digital First publications.
+Source: (Online)Select 100 online publications, which include Hybrid Media - Business, General & Technology and Digital First publications.
 News search: All Articles: entity mentioned at least once in the article"""
                 excel_io_all = io.BytesIO()
                 w1 = multiple_dfs(dfs, 'Tables', excel_io_all, comments, entity_info)
@@ -1894,7 +1894,7 @@ News search: All Articles: entity mentioned at least once in the article"""
         
         
             # Add Source text
-            source_text = "Source: (Online) Meltwater, Select 100 online publications, which include Hybrid Media - Business, General & Technology and Digital First publications."
+            source_text = "Source: Select 100 online publications, which include Hybrid Media - Business, General & Technology and Digital First publications."
             source_shape = slide.shapes.add_textbox(Inches(0.6), Inches(3), Inches(10), Inches(1.5))  # Adjusted width
             source_frame = source_shape.text_frame
             source_frame.word_wrap = True  # Enable text wrapping
