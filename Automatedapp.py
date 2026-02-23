@@ -808,6 +808,8 @@ with st.sidebar:
 
     START_DATE = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="start_date")
     END_DATE = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="end_date")
+    start_date = format_pretty_date(START_DATE)
+    end_date = format_pretty_date(END_DATE)
 
     date_selected = False
 
