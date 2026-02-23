@@ -808,36 +808,51 @@ with st.sidebar:
     st.title("Enter Date Range here")
     st.markdown("**Select Date Range**")  # Bold label
     date_range = st.date_input(
-    "Select date range (for screen readers)",
-    value=default_range,
-    min_value=min_date,
-    max_value=max_date,
-    key="date_range",
-    label_visibility="collapsed"
-)
+        "Select date range (for screen readers)",
+        value=default_range,
+        min_value=min_date,
+        max_value=max_date,
+        key="date_range",
+        label_visibility="collapsed"
+    )
+    
+    # ═══════════════════════════════════════════════════════════════
+    # ADD THIS LINE - Initialize the flag
+    # ═══════════════════════════════════════════════════════════════
+    date_selected = False
+    
+    # ═══════════════════════════════════════════════════════════════
+    # RESTRUCTURED VALIDATION - NO st.stop() calls!
+    # ═══════════════════════════════════════════════════════════════
+    
     if date_range == default_range:
         st.sidebar.write("**⚠️ Date not changed yet**")
-        st.stop()
-
-    # === VALIDATE USER-SELECTED RANGE ===
-    if not isinstance(date_range, tuple) or len(date_range) != 2:
+        # date_selected stays False - no st.stop()!
+        
+    elif not isinstance(date_range, tuple) or len(date_range) != 2:
         st.error("Please select both start and end dates.")
-        st.stop()
+        # date_selected stays False - no st.stop()!
+        
+    else:
+        START_DATE, END_DATE = date_range
+        
+        if START_DATE > END_DATE:
+            st.error("Start date cannot be after end date.")
+            # date_selected stays False - no st.stop()!
+            
+        elif START_DATE == END_DATE:
+            st.error("Start and end dates cannot be the same.")
+            # date_selected stays False - no st.stop()!
+            
+        else:
+            # ═══════════════════════════════════════════════════════
+            # DATES ARE VALID - Set flag to True
+            # ═══════════════════════════════════════════════════════
+            start_date = format_pretty_date(START_DATE)
+            end_date = format_pretty_date(END_DATE)
+            st.success(f"**Date range selected:**\n**Start:** {start_date} | **End:** {end_date}")
+            date_selected = True  # ← Only set True when dates are valid
 
-    START_DATE, END_DATE = date_range
-
-    if START_DATE > END_DATE:
-        st.error("Start date cannot be after end date.")
-        st.stop()
-    if START_DATE == END_DATE:
-        st.error("Start and end dates cannot be the same.")
-        st.stop()
-
-    # === SUCCESS MESSAGE (REPLACES EVERYTHING) ===
-    start_date = format_pretty_date(START_DATE)
-    end_date = format_pretty_date(END_DATE)
-    st.success(f"**Date range selected:**\n**Start:** {start_date} | **End:** {end_date}")
-    date_selected = True
 # Sidebar for file upload and download options
 if date_selected:
     st.sidebar.write("## Provide Client's Industry")
@@ -2370,48 +2385,124 @@ News search: All Articles: entity mentioned at least once in the article"""
             # === DOWNLOAD GROK PROMPTS (.docx) ===
             st.sidebar.write("## Download Grok Prompts (.docx)")
             from docx import Document
-            from docx.shared import RGBColor
+            from docx.shared import RGBColor, Pt
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            import io
+            import base64
 
             if st.sidebar.button("Download Prompts"):
-                
-
+               
                 # === COLOR PALETTE (NO RED) ===
-                CLIENT_NAME_COLOR = RGBColor(0, 102, 255)     # Blue for Client Name
-                DATE_COLOR        = RGBColor(0, 128, 0)       # Green for Dates
-                COMPETITOR_COLOR  = RGBColor(255, 140, 0)     # Orange for Competitors
-                INDUSTRY_COLOR    = RGBColor(128, 0, 128)     # Purple for Industry
-                PUB_COLOR         = RGBColor(255, 20, 147)    # Deep Pink for Publications
-                JOURNALIST_COLOR  = RGBColor(225, 167, 63)     # Gold for Journalists
-                BLACK             = RGBColor(0, 0, 0)
-
+                CLIENT_NAME_COLOR = RGBColor(0, 102, 255) # Blue for Client Name
+                DATE_COLOR = RGBColor(0, 128, 0) # Green for Dates
+                COMPETITOR_COLOR = RGBColor(255, 140, 0) # Orange for Competitors
+                INDUSTRY_COLOR = RGBColor(128, 0, 128) # Purple for Industry
+                PUB_COLOR = RGBColor(255, 20, 147) # Deep Pink for Publications
+                JOURNALIST_COLOR = RGBColor(225, 167, 63) # Gold for Journalists
+                BLACK = RGBColor(0, 0, 0)
+                
                 def add_run(p, txt, color=BLACK, bold=False):
+                    """Add text with color and optional bold"""
                     r = p.add_run(txt)
                     r.font.color.rgb = color
                     r.bold = bold
-                    return r
-
+                    return p
+                
                 doc = Document()
-
-                # === COLOR LEGEND ===
-                p = doc.add_paragraph()
-                add_run(p, "Color code: ", bold=True)
-                add_run(p, "Client name, ", CLIENT_NAME_COLOR, bold=True)        # e.g., Deep Blue
-                add_run(p, "Dates, ", DATE_COLOR, bold=True)                    # Bright Gold (formal & visible)
-                add_run(p, "Competitor name, ", COMPETITOR_COLOR, bold=True)    # Rich Red-Orange (distinct from Journalist)
-                add_run(p, "Industry name, ", INDUSTRY_COLOR, bold=True)        # Forest Green
-                add_run(p, "Publication Name with limited mentions on Client, ", PUB_COLOR, bold=True)  # Purple
-                add_run(p, "Journalist Name with limited mentions on Client", JOURNALIST_COLOR, bold=True)  # Teal (bright & professional)
-                doc.add_paragraph()
-
+                
                 # Short variables
                 s = start_date
                 e = end_date
                 c = client_name
                 comp = competitors_str
                 ind = industry
-                pubs = publications_str
-                jour = journalists_str
+                
+                # === COLOR LEGEND ===
+                p = doc.add_paragraph()
+                add_run(p, "Color code: ", bold=True)
+                add_run(p, "Client name, ", CLIENT_NAME_COLOR, bold=True)
+                add_run(p, "Dates, ", DATE_COLOR, bold=True)
+                add_run(p, "Competitor name, ", COMPETITOR_COLOR, bold=True)
+                add_run(p, "Industry name, ", INDUSTRY_COLOR, bold=True)
+                add_run(p, "Publication Name with limited mentions on Client, ", PUB_COLOR, bold=True)
+                add_run(p, "Journalist Name with limited mentions on Client", JOURNALIST_COLOR, bold=True)
 
+                p = doc.add_paragraph()
+                p.add_run("I work in Media Research Team at a PR Company, I will be sharing the below Qualitative insights with the PR professionals. Please keep this in mind and provide insights accordingly.")         
+                
+                # === REQUIREMENTS SECTION ===
+                p = doc.add_paragraph()
+                p.add_run("Satisfy the below requirements :").bold = True
+                
+                # Prompt 1,2 requirements
+                p = doc.add_paragraph()
+                p.add_run("Prompt 1 follow the below requirements").bold = True
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Please give topicwise/bucketwise paragraph with topic/bucket highlighted please be very much elaborative as possible")
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Max 2 sentences should be in a line then move into next line and follow the same thing consider them as a point and the points should always be elaborative and not in one liner")
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("In each topicwise/bucketwise paragraph and in each and every point in the paragraph, the content should be very much  elaborative as possible and there should be atleast 5-6 such points without losing relevant news in each topic and those should be elaborative")
+                
+                # NOTE for prompt 3
+                p = doc.add_paragraph()
+                r = p.add_run("NOTE : ")
+                r.bold = True
+                p.add_run("Don't provide insight for prompt 3")
+                
+                # Prompt 4,5 requirements
+                p = doc.add_paragraph()
+                p.add_run("Prompt 4,5 follow the below requirements").bold = True
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Please give the insights in tabular format, don't mention no. of articles anywhere) Give one elaborative paragraph before creating a table.")
+                
+                # Prompt 6,7 requirements
+                p = doc.add_paragraph()
+                p.add_run("Prompt 6,7 follow the below requirements").bold = True
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Give five or more critiques pointwise (be elaborative as much as possible) with the critiques pointer headers highlighted (just have 2-3 elaborative pointers in each critiques). Give one paragraph elaborative description before giving the pointers for critiques.")
+                
+                # Prompt 9,10 requirements
+                p = doc.add_paragraph()
+                p.add_run("Prompt 9,10 follow the below requirements").bold = True
+                
+                p = doc.add_paragraph(style='List Bullet')
+                r = p.add_run("Give paragraph wise for each Publications/Journalist(along with publication name) mentioned here and highlight the Publication name/Journalist,please be very much elaborative don't be generic relate it with the news released by these publications/journalist on the ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                p.add_run(" industry. (")
+                r = p.add_run("Note : ")
+                r.bold = True
+                p.add_run("Publications/Journalist(along with publication name) should be highlighted)")
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Don't give me the number of news written by these publications/journalists  just the content that has been written on the ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                p.add_run(" industry.")
+                
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run("Additionally, follow the same requirements given for Prompt 1 excluding the first point in it (i.e Please give topicwise/bucketwise paragraph with topic/bucket)")
+                
+                doc.add_paragraph()
+
+                p = doc.add_paragraph()
+                r = p.add_run("For Prompts 1-10 ")
+                r.bold = True
+                p.add_run("please note that : do not consider press release from the companys website or any social media platform")                # Add formatting instruction before prompts
+
+                p = doc.add_paragraph()
+                p.add_run("Before giving insight for each prompt mention the title like Conversations on Client company, Topicwise Conversations on Client company,… etc (and replace Client Company with ")
+                add_run(p, c, CLIENT_NAME_COLOR)
+                p.add_run(" and Industry with ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                p.add_run(")  with formatting ### and no bold formatting and topics/buckets with bold formatting **,please follow the formatting strictly don't use bold formatting in the content of any of the buckets/topics")
+                
+                doc.add_paragraph()
+                
                 # === PROMPT 1 ===
                 p = doc.add_paragraph()
                 add_run(p, "1) Conversations on Client company - ", bold=True)
@@ -2422,7 +2513,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 add_run(p, " for ")
                 add_run(p, c, CLIENT_NAME_COLOR)
                 add_run(p, "? Please summarize as many topics as possible but do not consider press release from the companys website or any social media platform. Only summarize the articles from print and online news platforms.")
-
+                
                 # === PROMPT 2 ===
                 p = doc.add_paragraph()
                 add_run(p, "2) Topicwise Conversation on Client Company - ", bold=True)
@@ -2432,24 +2523,27 @@ News search: All Articles: entity mentioned at least once in the article"""
                 add_run(p, e, DATE_COLOR)
                 add_run(p, " for ")
                 add_run(p, c, CLIENT_NAME_COLOR)
-                add_run(p, "? Please summarize the news articles as per the following categories. I am giving you the buckets. Please arrange the news as per their content in the relevant buckets and summarize that news. Only summarize the news articles from print and online news platforms. ")
-                add_run(p, "The buckets are as follows: Financial Performance, Product and Services, Social Good (includes CSR, ESG, Philanthropy, Environment), Employee Engagement (includes hiring, resignation, layoffs, training, skilling, employee benefits, appraisals...), Business Strategy (include growth, mergers, future, market share...), Vision and Leadership (Interviews, interaction, thought leadership, authored articles...), Legal and Regulatory, Tech & innovation, Stock related (stock recommendations, stock movements)")
-
+                add_run(p, ". Please summarize the news articles as per the following categories. I am giving you the buckets. Please arrange the news as per their content in the relevant buckets and summarize that news. Only summarize the news articles from print and online news platforms. The buckets are as follows: Financial Performance, Product and Services, Social Good (includes CSR, ESG, Philanthropy, Environment), Employee Engagement (includes hiring, resignation, layoffs, training, skilling, employee benefits, appraisals...), Business Strategy (include growth, mergers, future, market share...), Vision and Leadership (Interviews, interaction, thought leadership, authored articles...), Legal and Regulatory, Tech & innovation, Stock related (stock recommendations, stock movements).( ")
+                r = p.add_run("Note : ")
+                r.bold = True
+                add_run(p, "Please give topicwise/bucketwise paragraph with topic/bucket highlighted please be very much elaborative as possible. Max 2 sentences should be in a line then move into next line and follow the same thing consider them as a point and the points should always be elaborative and not in one liner. In each topicwise/bucketwise paragraph and in each and every point in the paragraph, the content should be very much  elaborative as possible and there should be atleast 5-6 such points without losing relevant news in each topic and those should be elaborative)")
+                
                 # === PROMPT 3 ===
                 p = doc.add_paragraph()
-                add_run(p, "3) Exclusive Conversation on Client Company ", bold=True)
+                add_run(p, "3) Topicwise Conversation on Competitor Company - ", bold=True)
                 add_run(p, "Could you Summarize the news articles from ")
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
                 add_run(p, " for ")
-                add_run(p, c, CLIENT_NAME_COLOR)
-                add_run(p, "? Please summarize as many topics as possible but do not consider press release from the companys website or any social media platform. Only summarize the articles with ")
-                add_run(p, c, CLIENT_NAME_COLOR)
-                add_run(p, " mentioned in the Headline or the lead para or if ")
-                add_run(p, c, CLIENT_NAME_COLOR)
-                add_run(p, " is mentioned atleast twice in the article from print and online news platforms.")
-
+                add_run(p, comp, COMPETITOR_COLOR)
+                add_run(p, "? Give Topicwise conversation entity wise, one after the other follow the bucket structure for each of the entities, want separate separate topic wise conversation for each entity. Please summarize the news articles as per the following categories. I am giving you the buckets. Please arrange the news as per their content in the relevant buckets and summarize that news. Only summarize the news articles from print and online news platforms. The buckets are as follows: Financial Performance, Product and Services, Social Good (includes CSR, ESG, Philanthropy, Environment), Employee Engagement (includes hiring, resignation, layoffs, training, skilling, employee benefits, appraisals...), Business Strategy (include growth, mergers, future, market share...), Vision and Leadership (Interviews, interaction, thought leadership, authored articles...), Legal and Regulatory, Tech & innovation, Stock related (stock recommendations, stock movements). (")
+                r = p.add_run("Note : ")
+                r.bold = True
+                add_run(p, "Please give topicwise/bucketwise paragraph with topic/bucket highlighted please be very much elaborative as possible. Max 2 sentences should be in a line then move into next line and follow the same thing consider them as a point and the points should always be elaborative and not in one liner. In each topicwise/bucketwise paragraph and in each and every point in the paragraph, the content should be very much  elaborative as possible and there should be atleast 5-6 such points without losing relevant news in each topic and those should be elaborative) Give it with the Header i.e Topicwise Conversation on Competitor Company with formatting ### and competitor name ")
+                add_run(p, comp, COMPETITOR_COLOR)
+                add_run(p, "  with formatting ## with no bold formatting and buckets with bold formatting **, please follow the formatting strictly don't use bold formatting in the content of any of the buckets/topics")
+                
                 # === PROMPT 4 ===
                 p = doc.add_paragraph()
                 add_run(p, "4) Month – on – Month Insights - ", bold=True)
@@ -2459,8 +2553,8 @@ News search: All Articles: entity mentioned at least once in the article"""
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
-                add_run(p, ". Give me details of events that have lead to a spike in the media coverage.")
-
+                add_run(p, ". Give me details of events that have lead to a spike in the media coverage and if no news is present for a particular month mention that in the table itself.")
+                r = p                
                 # === PROMPT 5 ===
                 p = doc.add_paragraph()
                 add_run(p, "5) Unique Conversations by Competitors - ", bold=True)
@@ -2476,69 +2570,103 @@ News search: All Articles: entity mentioned at least once in the article"""
                 add_run(p, c, CLIENT_NAME_COLOR)
                 add_run(p, "? Identify the unique conversation topics (topics where ")
                 add_run(p, c, CLIENT_NAME_COLOR)
-                add_run(p, " is not mentioned) where these companies were mentioned in the Headline or the lead para or if they were mentioned atleast twice in the article that have driven the higher media coverage.")
-
+                add_run(p, " is not mentioned) where these companies were mentioned in the Headline or the lead para or if they were mentioned atleast twice in the article that have driven the higher media coverage.  (")
+                r = p.add_run("Note : ")
+                r.bold = True
+                add_run(p, "give the insights in tabular format with Column name : Company, Unique Conversation Topics be elaborative relating it with the news, (for each row there should be just 1 company name all its unique conversation should be there beside it in the Unique Conversation Topics column) Give one elaborative paragraph before creating a table.")
+                
                 # === PROMPT 6 ===
                 p = doc.add_paragraph()
                 add_run(p, "6) Reputational Risks for Client - ", bold=True)
-                add_run(p, "What is the media saying about ")
+                add_run(p, "What is the online news media saying about ")
                 add_run(p, c, CLIENT_NAME_COLOR)
                 add_run(p, " from ")
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
-                add_run(p, "? Summarize the top five critiques.")
-
+                add_run(p, "? Give five or more critiques.")
+                
                 # === PROMPT 7 ===
                 p = doc.add_paragraph()
-                add_run(p, "7) Industry Snapshot - ", bold=True)
-                add_run(p, "What is the media conversation in the ")
+                add_run(p, "7) Reputational Risks for Industry - ", bold=True)
+                add_run(p, "What is the online news media saying about ")
                 add_run(p, ind, INDUSTRY_COLOR)
                 add_run(p, " industry from ")
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
-                add_run(p, " and identify the companies who are a part of these conversations.")
-
+                add_run(p, "? Give five or more critiques.")
+                
                 # === PROMPT 8 ===
                 p = doc.add_paragraph()
-                add_run(p, "8) Publications with limited mentions on Client - ", bold=True)
-                add_run(p, "What are the conversations in ")
-                add_run(p, pubs, PUB_COLOR)
-                add_run(p, " on the ")
+                add_run(p, "8) Industry Snapshot - ", bold=True)
+                add_run(p, "What is the online news media conversation in the ")
                 add_run(p, ind, INDUSTRY_COLOR)
                 add_run(p, " industry from ")
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
-                add_run(p, "? Don’t give me the number of news written by these publications just the content that has been written on the ")
+                add_run(p, " and identify the companies who are a part of these conversations.(")
+                r = p.add_run("Note : ")
+                r.bold = True
+                add_run(p, "give the insights in tabular format and be elaborative relating it with the news, give company wise insight for this, don't put more than 1 company in one row) Give one elaborative paragraph before creating a table. You can also consider companies who are not the competitors but are present online news media conversation in the ")
                 add_run(p, ind, INDUSTRY_COLOR)
                 add_run(p, " industry.")
-
+                
                 # === PROMPT 9 ===
                 p = doc.add_paragraph()
-                add_run(p, "9) Journalists with limited Mentions on Client - ", bold=True)
-                add_run(p, "What type of news articles have been written by ")
-                add_run(p, jour, JOURNALIST_COLOR)
-                add_run(p, " on the ")
+                add_run(p, "9) Publications writing on Industry – ", bold=True)
+                add_run(p, "Which Indian publications (min 3) have frequently written on  ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                add_run(p, " industry from ")
+                add_run(p, s, DATE_COLOR)
+                add_run(p, " to ")
+                add_run(p, e, DATE_COLOR)
+                add_run(p, " and what are the conversations about the ")
                 add_run(p, ind, INDUSTRY_COLOR)
                 add_run(p, " industry AND which ")
                 add_run(p, ind, INDUSTRY_COLOR)
-                add_run(p, " companies have been mentioned by them? Don’t give me the number of news written by these journalists just the content that has been written by them on the ")
-                add_run(p, ind, INDUSTRY_COLOR)
-                add_run(p, " industry.")
-
+                add_run(p, " companies have been mentioned by them?")
+                
                 # === PROMPT 10 ===
                 p = doc.add_paragraph()
-                add_run(p, "10) X Insights - ", bold=True)
-                add_run(p, "What is being said on X about ")
+                add_run(p, "10) Journalist writing on Industry – ", bold=True)
+                add_run(p, "Which Indian journalists (min 3) have (mention their Publication name too) frequently written on ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                add_run(p, " industry from ")
+                add_run(p, s, DATE_COLOR)
+                add_run(p, " to ")
+                add_run(p, e, DATE_COLOR)
+                add_run(p, " and what are the conversations about the ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                add_run(p, " industry AND which ")
+                add_run(p, ind, INDUSTRY_COLOR)
+                add_run(p, " companies have been mentioned by them?")
+                
+                # === PROMPT 11 ===
+                p = doc.add_paragraph()
+                add_run(p, "11) X Insights - ", bold=True)
+                add_run(p, "What is being said on Twitter X about ")
                 add_run(p, c, CLIENT_NAME_COLOR)
                 add_run(p, " between ")
                 add_run(p, s, DATE_COLOR)
                 add_run(p, " to ")
                 add_run(p, e, DATE_COLOR)
-                add_run(p, "?")
-
+                add_run(p, "? (")
+                r = p.add_run("Note : ")
+                r.bold = True
+                add_run(p, "Please be very much elaborative , should be majorly on users conversation around ")
+                add_run(p, c, CLIENT_NAME_COLOR)
+                add_run(p, ", if possible highlight the user whose content about ")
+                add_run(p, c, CLIENT_NAME_COLOR)
+                add_run(p, " has larger influence among the twitter audience and give breakdown of Positive Discussions, Criticisms and Complaints, Neutral/Informational Mentions, and highlight it, please be as elaborative as possible)")
+                
+                # Final NOTE
+                p = doc.add_paragraph()
+                r = p.add_run("NOTE : ")
+                r.bold = True
+                p.add_run("Don't provide insight for prompt 3")
+                
                 # === SAVE & DOWNLOAD ===
                 buffer = io.BytesIO()
                 doc.save(buffer)
@@ -2546,8 +2674,8 @@ News search: All Articles: entity mentioned at least once in the article"""
                 b64 = base64.b64encode(buffer.read()).decode()
                 href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="Grok_Prompts_{client_name}.docx">Download Grok Prompts (.docx)</a>'
                 st.sidebar.markdown(href, unsafe_allow_html=True)
-        
-            
+    
+    # Continue with the rest of your prompts (2-12) as before...
             # Download selected DataFrame
             st.sidebar.write("## Download Selected DataFrame")
             dataframes_to_download = {
@@ -2673,6 +2801,378 @@ def update_latest_wordcloud():
 
 def update_latest_similarity():
     st.session_state.latest = "similarity"
+
+def update_latest_qualitative():
+    st.session_state.latest = "qualitative"
+
+# --- Qualitative Report Section ---
+# File uploader for WordCloud with an on_change callback
+st.sidebar.markdown(
+    "<p style='font-size: 20px; font-weight: bold;'>Qualitative Report</p>",
+    unsafe_allow_html=True
+)
+
+uploaded_docx = st.sidebar.file_uploader(
+    "Upload Word Document (.docx)",
+    type=["docx"],
+    key="qualitative_docx_uploader",
+    on_change=update_latest_qualitative
+)
+
+if uploaded_docx is not None:
+    if st.sidebar.button("Generate Report"):
+        with st.spinner("Generating PowerPoint presentation..."):
+            try:
+                import io
+                from docx import Document
+                from pptx import Presentation
+                from pptx.util import Inches, Pt
+                from pptx.dml.color import RGBColor
+                from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+                
+                # ========================== CONFIGURATION ==========================
+                TEMPLATE_IMAGE = "Template Image.png"
+                FIRST_SLIDE_IMAGE = "First slide.png"
+                DISCLAIMER_IMAGE = "Disclaimer.png"
+                
+                SLIDE_WIDTH = Inches(13.333)
+                SLIDE_HEIGHT = Inches(7.5)
+                
+                LOGO_SIZE = Inches(1.0)
+                LOGO_LEFT = Inches(0.0)
+                LOGO_BOTTOM_MARGIN = Inches(0.0)
+                
+                HEADER_TOP = Inches(0.15)
+                HEADER_HEIGHT = Inches(0.65)
+                
+                CONTENT_LEFT = Inches(0.4)
+                CONTENT_TOP = Inches(0.50)
+                CONTENT_WIDTH = SLIDE_WIDTH - Inches(0.8)
+                
+                MAX_CONTENT_HEIGHT_PT = 460
+                
+                ORANGE = RGBColor(255, 140, 0)
+                
+                FONT_HEADING = 18
+                FONT_COMPETITOR = 22
+                FONT_NORMAL = 16
+                
+                # =====================================================================
+                
+                def is_table_start(line):
+                    stripped = line.strip()
+                    return stripped.startswith("|") and "|" in stripped[1:]
+                
+                def parse_markdown_table(lines):
+                    rows = []
+                    for line in lines:
+                        stripped = line.strip()
+                        if stripped.startswith("|"):
+                            cells = [c.strip() for c in stripped.split("|")[1:-1]]
+                            if any(cells):
+                                rows.append(cells)
+                    
+                    if len(rows) > 1 and all(set(c) <= {"-", ":", " "} for c in rows[1]):
+                        rows.pop(1)
+                    
+                    return rows
+                
+                def remove_bold_markers(text):
+                    return text.replace("**", "")
+                
+                def is_topic_heading(text):
+                    stripped = text.strip()
+                    return stripped.startswith("**") and stripped.endswith("**")
+                
+                def is_competitor_marker(text):
+                    stripped = text.strip()
+                    return stripped.startswith("##")
+                
+                def estimate_line_height(text, font_size, is_heading=False, is_competitor=False):
+                    chars_per_line = 100
+                    lines_needed = max(1, len(text) / chars_per_line)
+                    spacing = 1.25
+                    height = lines_needed * font_size * spacing
+                    
+                    if is_heading:
+                        height += 12
+                    if is_competitor:
+                        height += 20
+                    
+                    return height
+                
+                # Load uploaded DOCX
+                doc = Document(io.BytesIO(uploaded_docx.read()))
+                full_text = "\n".join(para.text for para in doc.paragraphs if para.text.strip())
+                
+                sections = []
+                current_title = None
+                current_body = []
+                
+                for line in full_text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("###"):
+                        if current_title:
+                            sections.append({"title": current_title, "body": current_body})
+                        current_title = stripped[3:].strip()
+                        current_body = []
+                    elif current_title and stripped:
+                        current_body.append(line)
+                
+                if current_title:
+                    sections.append({"title": current_title, "body": current_body})
+                
+                # Extract client name
+                if sections:
+                    first_title = sections[0]["title"].strip()
+                    
+                    prefixes_to_remove = [
+                        "Conversations on ",
+                        "Topicwise Conversation on ",
+                        "Exclusive Conversation on ",
+                        "Month – on – Month Insights ",
+                    ]
+                    
+                    client_name = first_title
+                    for prefix in prefixes_to_remove:
+                        if client_name.startswith(prefix):
+                            client_name = client_name[len(prefix):].strip()
+                            break
+                    
+                    if not client_name:
+                        client_name = "Client"
+                    
+                    output_filename = f"{client_name} Qualitative Insights Report.pptx"
+                else:
+                    client_name = "Client"
+                    output_filename = "Qualitative Insights Report.pptx"
+                
+                # CREATE POWERPOINT
+                prs = Presentation()
+                prs.slide_width = SLIDE_WIDTH
+                prs.slide_height = SLIDE_HEIGHT
+                blank_layout = prs.slide_layouts[6]
+                
+                # Add Custom First Slide
+                if os.path.exists(FIRST_SLIDE_IMAGE):
+                    first_slide = prs.slides.add_slide(blank_layout)
+                    first_slide.shapes.add_picture(FIRST_SLIDE_IMAGE, Inches(0), Inches(0), SLIDE_WIDTH, SLIDE_HEIGHT)
+                    
+                    upper_text = f"{client_name} Insights"
+                    upper_tb = first_slide.shapes.add_textbox(Inches(1.5), Inches(0.5), SLIDE_WIDTH - Inches(1.8), Inches(1.2))
+                    tf_upper = upper_tb.text_frame
+                    tf_upper.word_wrap = True
+                    tf_upper.auto_size = True
+                    p_upper = tf_upper.add_paragraph()
+                    p_upper.text = upper_text
+                    p_upper.alignment = PP_ALIGN.LEFT
+                    p_upper.font.name = 'Helvetica'
+                    p_upper.font.size = Pt(41)
+                    p_upper.font.bold = True
+                    p_upper.font.color.rgb = RGBColor(255, 255, 255)
+                    
+                    lower_text = "By Media Research & Analytics Team"
+                    lower_tb = first_slide.shapes.add_textbox(Inches(1.5), Inches(1.3), SLIDE_WIDTH - Inches(1.8), Inches(0.8))
+                    tf_lower = lower_tb.text_frame
+                    p_lower = tf_lower.add_paragraph()
+                    p_lower.text = lower_text
+                    p_lower.alignment = PP_ALIGN.LEFT
+                    p_lower.font.name = 'Helvetica'
+                    p_lower.font.size = Pt(41)
+                    p_lower.font.bold = True
+                    p_lower.font.color.rgb = RGBColor(255, 255, 255)
+                    
+                    if os.path.exists(DISCLAIMER_IMAGE):
+                        disclaimer_left = Inches(1.2)
+                        disclaimer_top = Inches(6.5)
+                        disclaimer_width = SLIDE_WIDTH - Inches(1.2)
+                        first_slide.shapes.add_picture(DISCLAIMER_IMAGE, disclaimer_left, disclaimer_top, width=disclaimer_width)
+                
+                # Add Content Slides
+                for section_idx, section in enumerate(sections, 1):
+                    title = section["title"]
+                    lines = section["body"]
+                    
+                    is_competitor_section = "competitor" in title.lower()
+                    max_slides = 999 if is_competitor_section else 3
+                    
+                    current_slide_idx = 1
+                    current_y_offset = 0
+                    
+                    def add_new_slide(title_text, slide_number):
+                        slide = prs.slides.add_slide(blank_layout)
+                        bg = slide.background
+                        bg.fill.solid()
+                        bg.fill.fore_color.rgb = RGBColor(255, 255, 255)
+                        
+                        if os.path.exists(TEMPLATE_IMAGE):
+                            slide.shapes.add_picture(TEMPLATE_IMAGE, LOGO_LEFT, SLIDE_HEIGHT - LOGO_SIZE - LOGO_BOTTOM_MARGIN, LOGO_SIZE)
+                        
+                        tb = slide.shapes.add_textbox(Inches(0.4), HEADER_TOP, SLIDE_WIDTH - Inches(0.8), HEADER_HEIGHT)
+                        p = tb.text_frame.paragraphs[0]
+                        p.text = title_text
+                        p.font.size = Pt(26)
+                        p.font.color.rgb = ORANGE
+                        p.font.bold = True
+                        p.alignment = PP_ALIGN.CENTER
+                        
+                        return slide
+                    
+                    slide = add_new_slide(title, current_slide_idx)
+                    content_box = slide.shapes.add_textbox(CONTENT_LEFT, CONTENT_TOP, CONTENT_WIDTH, Pt(MAX_CONTENT_HEIGHT_PT))
+                    tf = content_box.text_frame
+                    tf.word_wrap = True
+                    tf.auto_size = False
+                    tf.vertical_anchor = MSO_ANCHOR.TOP
+                    
+                    i = 0
+                    while i < len(lines):
+                        line = lines[i]
+                        
+                        if is_table_start(line):
+                            table_lines = []
+                            while i < len(lines) and is_table_start(lines[i]):
+                                table_lines.append(lines[i])
+                                i += 1
+                            
+                            table_data = parse_markdown_table(table_lines)
+                            if not table_data:
+                                continue
+                            
+                            rows, cols = len(table_data), len(table_data[0])
+                            est_height_pt = len(table_data) * 24 + 40
+                            
+                            if current_y_offset + est_height_pt > MAX_CONTENT_HEIGHT_PT and current_slide_idx < max_slides:
+                                current_slide_idx += 1
+                                slide = add_new_slide(title, current_slide_idx)
+                                current_y_offset = 0
+                                content_box = slide.shapes.add_textbox(CONTENT_LEFT, CONTENT_TOP, CONTENT_WIDTH, Pt(MAX_CONTENT_HEIGHT_PT))
+                                tf = content_box.text_frame
+                                tf.word_wrap = True
+                                tf.auto_size = False
+                                tf.vertical_anchor = MSO_ANCHOR.TOP
+                            
+                            left = CONTENT_LEFT
+                            top = CONTENT_TOP + Pt(current_y_offset)
+                            tbl_shape = slide.shapes.add_table(rows, cols, left, top, CONTENT_WIDTH, Pt(est_height_pt))
+                            tbl = tbl_shape.table
+                            
+                            for r_idx, row in enumerate(table_data):
+                                for c_idx, cell_text in enumerate(row):
+                                    cell = tbl.cell(r_idx, c_idx)
+                                    cell.text = cell_text
+                                    para = cell.text_frame.paragraphs[0]
+                                    para.font.size = Pt(10)
+                                    para.alignment = PP_ALIGN.LEFT
+                                    cell.vertical_anchor = MSO_ANCHOR.TOP
+                                    
+                                    cell.fill.solid()
+                                    if r_idx == 0:
+                                        cell.fill.fore_color.rgb = ORANGE
+                                        para.font.bold = True
+                                        para.font.color.rgb = RGBColor(0, 0, 0)
+                                    else:
+                                        cell.fill.fore_color.rgb = RGBColor(255, 255, 255)
+                                    
+                                    cell.margin_left = Pt(5)
+                                    cell.margin_right = Pt(5)
+                                    cell.margin_top = Pt(5)
+                                    cell.margin_bottom = Pt(5)
+                            
+                            current_y_offset += (tbl_shape.height.pt + 20)
+                            continue
+                        
+                        is_head = is_topic_heading(line)
+                        is_comp = is_competitor_marker(line)
+                        
+                        if is_comp:
+                            clean_text = line.strip()[2:].strip()
+                        else:
+                            clean_text = remove_bold_markers(line).strip()
+                        
+                        if not clean_text:
+                            i += 1
+                            continue
+                        
+                        f_size = FONT_COMPETITOR if is_comp else (FONT_HEADING if is_head else FONT_NORMAL)
+                        line_h = estimate_line_height(clean_text, f_size, is_head, is_comp)
+                        
+                        if is_comp and current_y_offset > 10:
+                            current_slide_idx += 1
+                            slide = add_new_slide(title, current_slide_idx)
+                            current_y_offset = 0
+                            content_box = slide.shapes.add_textbox(CONTENT_LEFT, CONTENT_TOP, CONTENT_WIDTH, Pt(MAX_CONTENT_HEIGHT_PT))
+                            tf = content_box.text_frame
+                            tf.word_wrap = True
+                            tf.auto_size = False
+                            tf.vertical_anchor = MSO_ANCHOR.TOP
+                        elif current_y_offset + line_h > MAX_CONTENT_HEIGHT_PT and current_slide_idx < max_slides:
+                            current_slide_idx += 1
+                            slide = add_new_slide(title, current_slide_idx)
+                            current_y_offset = 0
+                            content_box = slide.shapes.add_textbox(CONTENT_LEFT, CONTENT_TOP, CONTENT_WIDTH, Pt(MAX_CONTENT_HEIGHT_PT))
+                            tf = content_box.text_frame
+                            tf.word_wrap = True
+                            tf.auto_size = False
+                            tf.vertical_anchor = MSO_ANCHOR.TOP
+                        
+                        p = tf.add_paragraph()
+                        p.text = clean_text
+                        p.word_wrap = True
+                        p.font.size = Pt(f_size)
+                        
+                        if is_comp:
+                            p.font.bold = True
+                            p.font.color.rgb = ORANGE
+                            p.space_before = Pt(20)  # Space BEFORE competitor header
+                            p.space_after = Pt(0)    # No space after - goes directly to content
+                        elif is_head:
+                            p.font.bold = True
+                            p.space_before = Pt(12)  # Space BEFORE topic/bucket header
+                            p.space_after = Pt(0)    # No space after - goes directly to content
+                        else:
+                            # Normal points - no extra spacing
+                            p.space_before = Pt(0)
+                            p.space_after = Pt(0)
+                        current_y_offset += line_h
+                        i += 1
+                
+                # Thank You Slide
+                thank_you_slide = prs.slides.add_slide(blank_layout)
+                
+                if os.path.exists(TEMPLATE_IMAGE):
+                    thank_you_slide.shapes.add_picture(TEMPLATE_IMAGE, LOGO_LEFT, SLIDE_HEIGHT - LOGO_SIZE - LOGO_BOTTOM_MARGIN, LOGO_SIZE)
+                
+                thank_you_tb = thank_you_slide.shapes.add_textbox(Inches(0.3), Inches(2.0), SLIDE_WIDTH - Inches(1.0), Inches(2.0))
+                tf_thank = thank_you_tb.text_frame
+                tf_thank.word_wrap = True
+                tf_thank.vertical_anchor = MSO_ANCHOR.MIDDLE
+                p_thank = tf_thank.add_paragraph()
+                p_thank.text = "Thank You"
+                p_thank.alignment = PP_ALIGN.CENTER
+                p_thank.font.name = 'Helvetica'
+                p_thank.font.size = Pt(33)
+                p_thank.font.bold = True
+                p_thank.font.color.rgb = ORANGE
+                
+                # Save to buffer
+                ppt_buffer = io.BytesIO()
+                prs.save(ppt_buffer)
+                ppt_buffer.seek(0)
+                
+                # Store in session state for download
+                st.session_state['ppt_file'] = ppt_buffer.getvalue()
+                st.session_state['ppt_filename'] = output_filename
+                st.sidebar.success("✅ PPT generated successfully!")
+                
+            except Exception as e:
+                st.sidebar.error(f"Error generating PPT: {str(e)}")
+
+# Show download link if PPT was generated
+if 'ppt_file' in st.session_state and 'ppt_filename' in st.session_state:
+    b64 = base64.b64encode(st.session_state['ppt_file']).decode()
+    href = f'<a href="data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,{b64}" download="{st.session_state["ppt_filename"]}">Download {st.session_state["ppt_filename"]}</a>'
+    st.sidebar.markdown(href, unsafe_allow_html=True)
 
 # File uploader for WordCloud with an on_change callback
 st.sidebar.markdown(
