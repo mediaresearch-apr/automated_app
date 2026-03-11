@@ -46,6 +46,7 @@ def process_excel(file):
     output = BytesIO()
     excel_writer = pd.ExcelWriter(output, engine='xlsxwriter')
     all_dframes = []
+    sheet_results = {}
 
     # Iterate through each sheet in the uploaded file
     for sheet_name in pd.ExcelFile(file).sheet_names:
@@ -94,7 +95,13 @@ def process_excel(file):
                             'express news service', '(English)', 'HT Correspondent', 'DC Correspondent', 'TOI Business Desk',
                             'India Today Bureau', 'HT Education Desk', 'PNS', 'Our Editorial', 'Sports Reporter',
                             'TOI News Desk', 'Legal Correspondent', 'The Quint', 'District Correspondent', 'etpanache',
-                            'ens economic bureau', 'Team Herald', 'Equitymaster','Hans India','Motilal Oswal']
+                            'ens economic bureau', 'Team Herald', 'Equitymaster','Hans India','Motilal Oswal','Our Web Desk','TOI City Desk',
+                            'HT Sports Desk','Team Agenda','TOI World Desk','HT US Desk','Pioneer News Service','HT Syndication','Outlook News Desk',
+                            'Our Special Correspondent','TOI Tech Desk','ENS ECONOMIC BUREAU', 'N.E.W.S. Desk','BS Reporter','Team ET','Outlook Web Desk',
+                            'Entertainment Web Desk','Outlook Brand Studio','Trending Desk','Bureau Newss','Our Web Correspondent','PR Content',
+                            'BS REPORTER','Trending Desk','Team Lounge','Our Web Correspondent','Focus','HT Real Estate News','MintGenie Team',
+                            'Our Correspondent','LM US Desk','Global Sports Desk','HT Trending Desk','Guest Post','HT Infotainment Desk','TEAM ET','AA Edit',
+                            'Guest','Editorial','agencies','DC Web Desk']
         dframe['Journalists'] = dframe['Journalists'].replace(words_to_replace, 'Bureau News', regex=True)
         
         additional_replacements = ['@timesgroup.com', 'TNN']
@@ -103,6 +110,25 @@ def process_excel(file):
         # Fill NaN or spaces in 'Journalists' column
         dframe['Journalists'] = dframe['Journalists'].apply(lambda x: 'Bureau News' if pd.isna(x) or x.isspace() else x)
         dframe['Journalists'] = dframe['Journalists'].str.lstrip()
+        # Remove trailing city/brand keywords from Journalists column
+        keywords_to_strip = [
+            'Forbes India', 'Forbes', 'Mumbai', 'New Delhi', 'Delhi', 
+            'Hyderabad', 'Bengaluru', 'Bengalore', 'Chennai', 
+            '@timesofindia.com', 'Ahmedabad', 'Kolkata',' @timesofindia.com','Edited by','|',' |','Senior Journalist'
+        ]
+
+        # Build regex pattern to remove these words from anywhere in the string
+        pattern = r'\s*\b(' + '|'.join(map(re.escape, keywords_to_strip)) + r')\b\s*'
+        # First remove the slash between cities, then remove the keywords
+        dframe['Journalists'] = dframe['Journalists'].str.replace(
+            r'\s*(' + '|'.join(map(re.escape, keywords_to_strip)) + r')(\s*/\s*(' + '|'.join(map(re.escape, keywords_to_strip)) + r'))*', 
+            '', regex=True
+        ).str.strip()
+
+        # Also clean columns 4 and 5 if they exist
+        for col in [4, 5]:
+            if col in dframe.columns:
+                dframe[col] = dframe[col].str.replace(pattern, ' ', regex=True).str.strip()
 
         # Read additional data for merging
         data2 = pd.read_excel(r"FActiva Publications.xlsx")
@@ -111,7 +137,8 @@ def process_excel(file):
         merged = pd.merge(dframe, data2, how='left', left_on=['Source'], right_on=['Source'])
 
         # Save the merged data to Excel with the sheet name
-        merged.to_excel(excel_writer, sheet_name=sheet_name, index=False)
+        #merged.to_excel(excel_writer, sheet_name=sheet_name, index=False)
+        sheet_results[sheet_name] = merged
         
         # Append DataFrame to the list
         all_dframes.append(merged)
@@ -127,6 +154,9 @@ def process_excel(file):
 
     # Save the combined data to a new sheet
     combined_data.to_excel(excel_writer, sheet_name='Combined_All_Sheets', index=False)
+
+    for sheet_name, merged in sheet_results.items():
+        merged.to_excel(excel_writer, sheet_name=sheet_name, index=False)
     
     # Show the processed dataframe in the web app
     st.write(combined_data)
@@ -200,6 +230,21 @@ if uploaded_files:
     
     # Reorder the DataFrame
     final_df = final_df[new_order]
+    # Read lookup file from backend
+    lookup_df = pd.read_excel('Meltwater Publications Vlookup.xlsx')
+    #lookup_df = lookup_df[['Source', 'Publication Name', 'Publication Type']].drop_duplicates(subset='Source')
+
+    # Merge on Source column
+    final_df = final_df.merge(lookup_df, on='Source', how='left')
+
+    # Reposition columns right after 'Source'
+    cols = final_df.columns.tolist()
+    cols.remove('Publication Name')
+    cols.remove('Publication Type')
+    source_index = cols.index('Source')
+    cols.insert(source_index + 1, 'Publication Name')
+    cols.insert(source_index + 2, 'Publication Type')
+    final_df = final_df[cols]
     
     # Show the processed dataframe in the web app
     st.write(final_df)
@@ -2822,7 +2867,7 @@ if uploaded_docx is not None:
                 
                 FONT_HEADING = 18
                 FONT_COMPETITOR = 22
-                FONT_NORMAL = 16
+                FONT_NORMAL = 14
                 
                 # =====================================================================
                 
@@ -2961,7 +3006,7 @@ if uploaded_docx is not None:
                     lines = section["body"]
                     
                     is_competitor_section = "competitor" in title.lower()
-                    max_slides = 999 if is_competitor_section else 3
+                    max_slides = 999 if is_competitor_section else 5
                     
                     current_slide_idx = 1
                     current_y_offset = 0
@@ -2978,7 +3023,8 @@ if uploaded_docx is not None:
                         tb = slide.shapes.add_textbox(Inches(0.4), HEADER_TOP, SLIDE_WIDTH - Inches(0.8), HEADER_HEIGHT)
                         p = tb.text_frame.paragraphs[0]
                         p.text = title_text
-                        p.font.size = Pt(26)
+                        p.font.name = 'Calibri (Headings)'
+                        p.font.size = Pt(24)
                         p.font.color.rgb = ORANGE
                         p.font.bold = True
                         p.alignment = PP_ALIGN.CENTER
@@ -3086,6 +3132,7 @@ if uploaded_docx is not None:
                         p = tf.add_paragraph()
                         p.text = clean_text
                         p.word_wrap = True
+                        p.font.name = 'Calibri'
                         p.font.size = Pt(f_size)
                         
                         if is_comp:
