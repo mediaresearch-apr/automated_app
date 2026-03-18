@@ -2643,7 +2643,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 # === PROMPT 10 ===
                 p = doc.add_paragraph()
                 add_run(p, "10) Journalist writing on Industry – ", bold=True)
-                add_run(p, "Which Indian journalists (min 3) have (mention their Publication name too) frequently written on ")
+                add_run(p, "Which Indian journalists name (min 3) have (mention their Publication name too) frequently written on ")
                 add_run(p, ind, INDUSTRY_COLOR)
                 add_run(p, " industry from ")
                 add_run(p, s, DATE_COLOR)
