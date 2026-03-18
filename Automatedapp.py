@@ -2436,8 +2436,8 @@ News search: All Articles: entity mentioned at least once in the article"""
                 add_run(p, "Dates, ", DATE_COLOR, bold=True)
                 add_run(p, "Competitor name, ", COMPETITOR_COLOR, bold=True)
                 add_run(p, "Industry name, ", INDUSTRY_COLOR, bold=True)
-                add_run(p, "Publication Name with limited mentions on Client, ", PUB_COLOR, bold=True)
-                add_run(p, "Journalist Name with limited mentions on Client", JOURNALIST_COLOR, bold=True)
+                add_run(p, "Publications writing on Industry", PUB_COLOR, bold=True)
+                add_run(p, "Journalists writing on Industry", JOURNALIST_COLOR, bold=True)
 
                 p = doc.add_paragraph()
                 p.add_run("I work in Media Research Team at a PR Company, I will be sharing the below Qualitative insights with the PR professionals. Please keep this in mind and provide insights accordingly.")         
