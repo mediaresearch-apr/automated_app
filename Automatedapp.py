@@ -232,7 +232,7 @@ if uploaded_files:
     final_df = final_df[new_order]
     # Read lookup file from backend
     lookup_df = pd.read_excel('Meltwater Publications Vlookup.xlsx')
-    #lookup_df = lookup_df[['Source', 'Publication Name', 'Publication Type']].drop_duplicates(subset='Source')
+    lookup_df = lookup_df[['Source', 'Publication Name', 'Publication Type']].drop_duplicates(subset='Source')
 
     # Merge on Source column
     final_df = final_df.merge(lookup_df, on='Source', how='left')
