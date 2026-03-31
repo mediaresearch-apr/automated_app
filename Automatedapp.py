@@ -3229,7 +3229,12 @@ if file and not file1:
         return text
 
     # Cleaning the text in the Headline column
-    data['Cleaned_Headline'] = data['Headline'].apply(clean)
+    data['Cleaned_Headline'] = (
+    data['Headline']
+    .fillna('')                    # Replace NaN with empty string
+    .astype(str)                   # Ensure all are strings
+    .apply(clean)
+)
 
     # Define a function to clean the text (more thorough)
     def cleaned(text):
@@ -3253,10 +3258,32 @@ if file and not file1:
         return " ".join(filtered_tokens)
 
     # Cleaning the text in the review column
-    data['Text'] = data['Headline'].fillna('').astype(str).str.cat(
-        [data['Opening Text'].fillna('').astype(str), data['Hit Sentence'].fillna('').astype(str)],
-        sep=' '
-    )
+    # Full version with str.cat()
+    if {'Headline', 'Opening Text', 'Hit Sentence'}.issubset(data.columns):
+        data['Text'] = (
+            data['Headline']
+            .fillna('')
+            .astype(str)
+            .str.cat(
+                [data['Opening Text'].fillna('').astype(str),
+                 data['Hit Sentence'].fillna('').astype(str)],
+                sep=' '
+            )
+        )
+
+    # Fallback version
+    else:
+        data['Text'] = (
+            data['Headline']
+            .fillna('')
+            .astype(str)
+            .str.cat(
+                data.get('Summary', pd.Series('')).fillna('').astype(str),
+                sep=' '
+            )
+        )
+
+    data['Text'] = data['Text'].str.replace(r'\s+', ' ', regex=True).str.strip()
     data['Text'] = data['Text'].apply(cleaned)
     data.head()    
 
@@ -3385,11 +3412,38 @@ elif file1 and not file:
         return text
 
     # Cleaning the text in the Headline column
-    data['Cleaned_Headline'] = data['Headline'].apply(clean)
-    data['Text'] = data['Headline'].fillna('').astype(str).str.cat(
-        [data['Opening Text'].fillna('').astype(str), data['Hit Sentence'].fillna('').astype(str)],
-        sep=' '
-    )
+    data['Cleaned_Headline'] = (
+    data['Headline']
+    .fillna('')                    # Replace NaN with empty string
+    .astype(str)                   # Ensure all are strings
+    .apply(clean)
+)
+    # Full version with str.cat()
+    if {'Headline', 'Opening Text', 'Hit Sentence'}.issubset(data.columns):
+        data['Text'] = (
+            data['Headline']
+            .fillna('')
+            .astype(str)
+            .str.cat(
+                [data['Opening Text'].fillna('').astype(str),
+                 data['Hit Sentence'].fillna('').astype(str)],
+                sep=' '
+            )
+        )
+
+    # Fallback version
+    else:
+        data['Text'] = (
+            data['Headline']
+            .fillna('')
+            .astype(str)
+            .str.cat(
+                data.get('Summary', pd.Series('')).fillna('').astype(str),
+                sep=' '
+            )
+        )
+
+    data['Text'] = data['Text'].str.replace(r'\s+', ' ', regex=True).str.strip()
 
     # Define a function to clean the text (more thorough)
     def cleaned(text):
@@ -3580,7 +3634,12 @@ elif file and file1:
             text = re.sub('[,\.!?]', ' ', text)
             return text
 
-        data['Cleaned_Headline'] = data['Headline'].apply(clean)
+        data['Cleaned_Headline'] = (
+    data['Headline']
+    .fillna('')                    # Replace NaN with empty string
+    .astype(str)                   # Ensure all are strings
+    .apply(clean)
+)
     
         # Define a function to clean the text (more thorough)
         def cleaned(text):
@@ -3604,10 +3663,32 @@ elif file and file1:
             return " ".join(filtered_tokens)
     
         # Cleaning the text in the review column
-        data['Text'] = data['Headline'].fillna('').astype(str).str.cat(
-            [data['Opening Text'].fillna('').astype(str), data['Hit Sentence'].fillna('').astype(str)],
-            sep=' '
-        )
+        # Full version with str.cat()
+        if {'Headline', 'Opening Text', 'Hit Sentence'}.issubset(data.columns):
+            data['Text'] = (
+                data['Headline']
+                .fillna('')
+                .astype(str)
+                .str.cat(
+                    [data['Opening Text'].fillna('').astype(str),
+                     data['Hit Sentence'].fillna('').astype(str)],
+                    sep=' '
+                )
+            )
+
+        # Fallback version
+        else:
+            data['Text'] = (
+                data['Headline']
+                .fillna('')
+                .astype(str)
+                .str.cat(
+                    data.get('Summary', pd.Series('')).fillna('').astype(str),
+                    sep=' '
+                )
+            )
+
+        data['Text'] = data['Text'].str.replace(r'\s+', ' ', regex=True).str.strip()
         data['Text'] = data['Text'].apply(cleaned)
         data.head()    
     
@@ -3733,11 +3814,38 @@ elif file and file1:
             return text
     
         # Cleaning the text in the Headline column
-        data['Cleaned_Headline'] = data['Headline'].apply(clean)
-        data['Text'] = data['Headline'].fillna('').astype(str).str.cat(
-            [data['Opening Text'].fillna('').astype(str), data['Hit Sentence'].fillna('').astype(str)],
-            sep=' '
-        )
+        data['Cleaned_Headline'] = (
+    data['Headline']
+    .fillna('')                    # Replace NaN with empty string
+    .astype(str)                   # Ensure all are strings
+    .apply(clean)
+)
+        # Full version with str.cat()
+        if {'Headline', 'Opening Text', 'Hit Sentence'}.issubset(data.columns):
+            data['Text'] = (
+                data['Headline']
+                .fillna('')
+                .astype(str)
+                .str.cat(
+                    [data['Opening Text'].fillna('').astype(str),
+                     data['Hit Sentence'].fillna('').astype(str)],
+                    sep=' '
+                )
+            )
+
+        # Fallback version
+        else:
+            data['Text'] = (
+                data['Headline']
+                .fillna('')
+                .astype(str)
+                .str.cat(
+                    data.get('Summary', pd.Series('')).fillna('').astype(str),
+                    sep=' '
+                )
+            )
+
+        data['Text'] = data['Text'].str.replace(r'\s+', ' ', regex=True).str.strip()
     
         # Define a function to clean the text (more thorough)
         def cleaned(text):
