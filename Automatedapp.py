@@ -892,7 +892,7 @@ if date_selected and industry_provided :# File Upload Section
             # st.write("## Data Preview")
             # st.write(data)
             # Data preprocessing
-            data.drop(columns=data.columns[20:], axis=1, inplace=True)
+            data.drop(data.columns[20:], axis=1, inplace=True)
             data = data.rename({'Influencer': 'Journalist'}, axis=1)
         # data.drop_duplicates(subset=['Date', 'Entity', 'Headline', 'Publication Name'], keep='first', inplace=True)
         # data.drop_duplicates(subset=['Date', 'Entity', 'Opening Text', 'Publication Name'], keep='first', inplace=True, ignore_index=True)
