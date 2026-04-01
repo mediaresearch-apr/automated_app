@@ -989,7 +989,7 @@ if date_selected and industry_provided :# File Upload Section
         #Publication Name
             finaldata_non_exploded = finaldata.copy()
             finaldata['Journalist'] = (finaldata['Journalist'].astype(str).str.split(',').apply(lambda x: [j.strip() for j in x]))
-            finaldata = finaldata.explode('Journalist')
+            finaldata = finaldata.explode('Journalist').reset_index(drop=True)
     
             jr_tab = pd.crosstab(finaldata['Journalist'], finaldata['Entity'])
             jr_tab = jr_tab.reset_index(level=0)
