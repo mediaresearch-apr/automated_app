@@ -314,11 +314,11 @@ def create_entity_sheets(data, writer):
                 cell.alignment = Alignment(wrap_text=True)
                 
         first_col_letter = get_column_letter(1)
-        max_length = max(entity_df.iloc[:, 0].astype(str).apply(len).max(),len(str(entity_df.columns[0])))
+        max_length = max(entity_df.iloc[:, 0].astype(str).str.len().max(),len(str(entity_df.columns[0])))
         worksheet.column_dimensions[first_col_letter].width = max_length + 2
         
         second_col_letter = get_column_letter(2)
-        max_length = max(entity_df.iloc[:, 1].astype(str).apply(len).max(),len(str(entity_df.columns[1])))
+        max_length = max(entity_df.iloc[:, 1].astype(str).str.len().max(),len(str(entity_df.columns[1])))
         worksheet.column_dimensions[second_col_letter].width = max_length + 2
 
 
@@ -327,7 +327,7 @@ def create_entity_sheets(data, writer):
         for idx, column in enumerate(entity_df.columns[6:], start=7):  # Excel F = 6
             col_letter = get_column_letter(idx)
             max_length = max(
-                entity_df[column].astype(str).apply(len).max(),
+                entity_df[column].astype(str).str.len().max(),
                 len(str(column))
             )
             worksheet.column_dimensions[col_letter].width = max_length + 2
