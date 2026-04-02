@@ -314,23 +314,26 @@ def create_entity_sheets(data, writer):
                 cell.alignment = Alignment(wrap_text=True)
                 
         first_col_letter = get_column_letter(1)
-        max_length = max(entity_df.iloc[:, 0].astype(str).str.len().max(),len(str(entity_df.columns[0])))
-        worksheet.column_dimensions[first_col_letter].width = max_length + 2
+        col0_max = entity_df.iloc[:, 0].astype(str).str.len().max()
+        col0_max = 0 if pd.isna(col0_max) else int(col0_max)
+        max_length = max(col0_max, len(str(entity_df.columns[0])))
+        worksheet.column_dimensions[first_col_letter].width = float(max_length + 2)
         
         second_col_letter = get_column_letter(2)
-        max_length = max(entity_df.iloc[:, 1].astype(str).str.len().max(),len(str(entity_df.columns[1])))
-        worksheet.column_dimensions[second_col_letter].width = max_length + 2
+        col1_max = entity_df.iloc[:, 1].astype(str).str.len().max()
+        col1_max = 0 if pd.isna(col1_max) else int(col1_max)
+        max_length = max(col1_max, len(str(entity_df.columns[1])))
+        worksheet.column_dimensions[second_col_letter].width = float(max_length + 2)
 
 
 
         # Auto-adjust width for columns G onward
-        for idx, column in enumerate(entity_df.columns[6:], start=7):  # Excel F = 6
+        for idx, column in enumerate(entity_df.columns[6:], start=7):
             col_letter = get_column_letter(idx)
-            max_length = max(
-                entity_df[column].astype(str).str.len().max(),
-                len(str(column))
-            )
-            worksheet.column_dimensions[col_letter].width = max_length + 2
+            col_max = entity_df[column].astype(str).str.len().max()
+            col_max = 0 if pd.isna(col_max) else int(col_max)
+            max_length = max(col_max, len(str(column)))
+            worksheet.column_dimensions[col_letter].width = float(max_length + 2)
 
         # Detect URLs and add hyperlink formatting
         url_columns = [col for col in entity_df.columns if isinstance(col, str) and 'url' in col.lower()]
