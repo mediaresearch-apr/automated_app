@@ -2835,9 +2835,37 @@ uploaded_docx = st.sidebar.file_uploader(
     key="qualitative_docx_uploader",
     on_change=update_latest_qualitative
 )
-
 if uploaded_docx is not None:
-    if st.sidebar.button("Generate Report"):
+    st.session_state['docx_bytes'] = uploaded_docx.read()
+# ── Shared helper functions (used by both PPT and Word generators) ──
+def is_table_start(line):
+    stripped = line.strip()
+    return stripped.startswith("|") and "|" in stripped[1:]
+
+def parse_markdown_table(lines):
+    rows = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.split("|")[1:-1]]
+            if any(cells):
+                rows.append(cells)
+    if len(rows) > 1 and all(set(c) <= {"-", ":", " "} for c in rows[1]):
+        rows.pop(1)
+    return rows
+
+def remove_bold_markers(text):
+    return text.replace("**", "")
+
+def is_topic_heading(text):
+    stripped = text.strip()
+    return stripped.startswith("**") and stripped.endswith("**")
+
+def is_competitor_marker(text):
+    stripped = text.strip()
+    return stripped.startswith("##")
+if uploaded_docx is not None:
+    if st.sidebar.button("Generate PPT Report"):
         with st.spinner("Generating PowerPoint presentation..."):
             try:
                 import io
@@ -2876,34 +2904,7 @@ if uploaded_docx is not None:
                 
                 # =====================================================================
                 
-                def is_table_start(line):
-                    stripped = line.strip()
-                    return stripped.startswith("|") and "|" in stripped[1:]
                 
-                def parse_markdown_table(lines):
-                    rows = []
-                    for line in lines:
-                        stripped = line.strip()
-                        if stripped.startswith("|"):
-                            cells = [c.strip() for c in stripped.split("|")[1:-1]]
-                            if any(cells):
-                                rows.append(cells)
-                    
-                    if len(rows) > 1 and all(set(c) <= {"-", ":", " "} for c in rows[1]):
-                        rows.pop(1)
-                    
-                    return rows
-                
-                def remove_bold_markers(text):
-                    return text.replace("**", "")
-                
-                def is_topic_heading(text):
-                    stripped = text.strip()
-                    return stripped.startswith("**") and stripped.endswith("**")
-                
-                def is_competitor_marker(text):
-                    stripped = text.strip()
-                    return stripped.startswith("##")
                 
                 def estimate_line_height(text, font_size, is_heading=False, is_competitor=False):
                     chars_per_line = 100
@@ -2919,7 +2920,8 @@ if uploaded_docx is not None:
                     return height
                 
                 # Load uploaded DOCX
-                doc = Document(io.BytesIO(uploaded_docx.read()))
+                # ✅ New
+                doc = Document(io.BytesIO(st.session_state['docx_bytes']))
                 full_text = "\n".join(para.text for para in doc.paragraphs if para.text.strip())
                 
                 sections = []
@@ -3192,6 +3194,233 @@ if 'ppt_file' in st.session_state and 'ppt_filename' in st.session_state:
     b64 = base64.b64encode(st.session_state['ppt_file']).decode()
     href = f'<a href="data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,{b64}" download="{st.session_state["ppt_filename"]}">Download {st.session_state["ppt_filename"]}</a>'
     st.sidebar.markdown(href, unsafe_allow_html=True)
+# ========================== WORD DOC DOWNLOAD SECTION ==========================
+if 'docx_bytes' in st.session_state:
+    if st.sidebar.button("Generate Word Report"):
+        with st.spinner("Generating Word document..."):
+            try:
+                import io
+                from docx import Document as DocxDocument
+                from docx.shared import Pt, RGBColor, Inches
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                from docx.oxml.ns import qn
+                from docx.oxml import OxmlElement
+
+                ORANGE_HEX = "FF8C00"
+
+                def set_cell_bg(cell, hex_color):
+                    """Set table cell background color."""
+                    tc = cell._tc
+                    tcPr = tc.get_or_add_tcPr()
+                    shd = OxmlElement('w:shd')
+                    shd.set(qn('w:val'), 'clear')
+                    shd.set(qn('w:color'), 'auto')
+                    shd.set(qn('w:fill'), hex_color)
+                    tcPr.append(shd)
+
+                def add_paragraph(doc, text, bold=False, font_size=12,
+                                  center=False, color_hex=None, space_before=0, space_after=6):
+                    """Add a formatted paragraph to the document."""
+                    p = doc.add_paragraph()
+                    p.paragraph_format.space_before = Pt(space_before)
+                    p.paragraph_format.space_after = Pt(space_after)
+                    if center:
+                        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(text)
+                    run.bold = bold
+                    run.font.size = Pt(font_size)
+                    run.font.name = 'Calibri'
+                    if color_hex:
+                        run.font.color.rgb = RGBColor.from_string(color_hex)
+                    return p
+
+                # Re-read the uploaded file (reset seek position)
+                doc_input = DocxDocument(io.BytesIO(st.session_state['docx_bytes']))
+                full_text = "\n".join(para.text for para in doc_input.paragraphs if para.text.strip())
+
+                # Parse sections (same logic as PPT)
+                sections = []
+                current_title = None
+                current_body = []
+
+                for line in full_text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("###"):
+                        if current_title:
+                            sections.append({"title": current_title, "body": current_body})
+                        current_title = stripped[3:].strip()
+                        current_body = []
+                    elif current_title and stripped:
+                        current_body.append(line)
+
+                if current_title:
+                    sections.append({"title": current_title, "body": current_body})
+
+                # Extract client name (same logic as PPT)
+                if sections:
+                    first_title = sections[0]["title"].strip()
+                    prefixes_to_remove = [
+                        "Conversations on ",
+                        "Topicwise Conversation on ",
+                        "Exclusive Conversation on ",
+                        "Month – on – Month Insights ",
+                    ]
+                    client_name = first_title
+                    for prefix in prefixes_to_remove:
+                        if client_name.startswith(prefix):
+                            client_name = client_name[len(prefix):].strip()
+                            break
+                    if not client_name:
+                        client_name = "Client"
+                    word_filename = f"{client_name} Qualitative Insights Report.docx"
+                else:
+                    client_name = "Client"
+                    word_filename = "Qualitative Insights Report.docx"
+
+                # CREATE WORD DOCUMENT
+                word_doc = DocxDocument()
+
+                # Set page margins
+                for section in word_doc.sections:
+                    section.top_margin = Inches(1)
+                    section.bottom_margin = Inches(1)
+                    section.left_margin = Inches(1)
+                    section.right_margin = Inches(1)
+
+                # Cover / Title
+                add_paragraph(
+                    word_doc,
+                    f"{client_name} Qualitative Insights Report",
+                    bold=True, font_size=24, center=True,
+                    color_hex=ORANGE_HEX, space_before=20, space_after=6
+                )
+                add_paragraph(
+                    word_doc,
+                    "By Media Research & Analytics Team",
+                    bold=True, font_size=14, center=True, space_after=20
+                )
+                word_doc.add_page_break()
+
+                # Process each section
+                for section in sections:
+                    title = section["title"]
+                    lines = section["body"]
+
+                    # Section title — center aligned, bold, orange
+                    add_paragraph(
+                        word_doc, title,
+                        bold=True, font_size=18, center=True,
+                        color_hex=ORANGE_HEX, space_before=12, space_after=8
+                    )
+
+                    i = 0
+                    while i < len(lines):
+                        line = lines[i]
+
+                        # ── Table block ──────────────────────────────────────────
+                        if is_table_start(line):
+                            table_lines = []
+                            while i < len(lines) and is_table_start(lines[i]):
+                                table_lines.append(lines[i])
+                                i += 1
+
+                            table_data = parse_markdown_table(table_lines)
+                            if not table_data:
+                                continue
+
+                            rows_count = len(table_data)
+                            cols_count = len(table_data[0])
+
+                            tbl = word_doc.add_table(rows=rows_count, cols=cols_count)
+                            tbl.style = 'Table Grid'
+
+                            # Evenly distribute column widths across available width
+                            available_width = Inches(6.5)  # 8.5" page - 2" margins
+                            col_width = available_width / cols_count
+
+                            for r_idx, row_data in enumerate(table_data):
+                                row = tbl.rows[r_idx]
+                                for c_idx, cell_text in enumerate(row_data):
+                                    cell = row.cells[c_idx]
+                                    cell.width = col_width
+                                    cell.text = cell_text
+
+                                    # Style header row
+                                    para = cell.paragraphs[0]
+                                    run = para.add_run() if not para.runs else para.runs[0]
+                                    run.font.size = Pt(10)
+                                    run.font.name = 'Calibri'
+
+                                    if r_idx == 0:
+                                        run.bold = True
+                                        set_cell_bg(cell, ORANGE_HEX)
+                                    else:
+                                        set_cell_bg(cell, "FFFFFF")
+
+                            word_doc.add_paragraph()  # spacing after table
+                            continue
+
+                        # ── Competitor heading (## marker) ───────────────────────
+                        if is_competitor_marker(line):
+                            clean_text = line.strip()[2:].strip()
+                            if clean_text:
+                                add_paragraph(
+                                    word_doc, clean_text,
+                                    bold=True, font_size=16,
+                                    color_hex=ORANGE_HEX, space_before=16, space_after=4
+                                )
+                            i += 1
+                            continue
+
+                        # ── Topic / bucket heading (**bold**) ────────────────────
+                        if is_topic_heading(line):
+                            clean_text = remove_bold_markers(line).strip()
+                            if clean_text:
+                                add_paragraph(
+                                    word_doc, clean_text,
+                                    bold=True, font_size=13, space_before=10, space_after=3
+                                )
+                            i += 1
+                            continue
+
+                        # ── Normal body line ─────────────────────────────────────
+                        clean_text = remove_bold_markers(line).strip()
+                        if clean_text:
+                            add_paragraph(
+                                word_doc, clean_text,
+                                font_size=11, space_before=0, space_after=3
+                            )
+                        i += 1
+
+                    word_doc.add_page_break()
+
+                # Thank You page
+                add_paragraph(
+                    word_doc, "Thank You",
+                    bold=True, font_size=28, center=True,
+                    color_hex=ORANGE_HEX, space_before=40
+                )
+
+                # Save to buffer
+                word_buffer = io.BytesIO()
+                word_doc.save(word_buffer)
+                word_buffer.seek(0)
+
+                st.session_state['word_file'] = word_buffer.getvalue()
+                st.session_state['word_filename'] = word_filename
+                st.sidebar.success("✅ Word doc generated successfully!")
+
+            except Exception as e:
+                st.sidebar.error(f"Error generating Word doc: {str(e)}")
+
+# Download button for Word doc
+if 'word_file' in st.session_state:
+    st.sidebar.download_button(
+        label="⬇️ Download Word Report",
+        data=st.session_state['word_file'],
+        file_name=st.session_state['word_filename'],
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 # File uploader for WordCloud with an on_change callback
 st.sidebar.markdown(
