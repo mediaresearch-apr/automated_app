@@ -909,7 +909,8 @@ if date_selected and industry_provided :# File Upload Section
                 data.drop_duplicates(subset=['Date', 'Entity', 'Hit Sentence', 'Publication Name'], keep='first', inplace=True, ignore_index=True)
             finaldata = data
             finaldata['Date'] = pd.to_datetime(finaldata['Date']).dt.normalize()
-            competitors = [ent for ent in finaldata['Entity'].unique() if not ent.startswith("Client-")]
+            competitors = [ent for ent in finaldata['Entity'].dropna().unique() if not ent.startswith("Client-")]
+            
             if len(competitors) > 1:
                 competitors_str = ", ".join(competitors[:-1]) + f" and {competitors[-1]}"
             elif len(competitors) == 1:
