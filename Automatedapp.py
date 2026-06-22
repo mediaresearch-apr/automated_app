@@ -40,11 +40,19 @@ import io, base64
 # Streamlit app with a sidebar layout
 st.set_page_config(layout="wide")
 
+def strip_client_prefix(df):
+    """Remove 'Client-' prefix from all column names and string values in 'Entity' column."""
+    df = df.copy()
+    df.columns = [c.replace("Client-", "") if isinstance(c, str) else c for c in df.columns]
+    if "Entity" in df.columns:
+        df["Entity"] = df["Entity"].astype(str).str.replace("Client-", "", regex=False)
+    return df
+
 # Function to process the Excel file
 def process_excel(file):
     # Initialize Excel writer
     output = BytesIO()
-    excel_writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    excel_writer = pd.ExcelWriter(output, engine='openpyxl')
     all_dframes = []
     sheet_results = {}
 
@@ -213,13 +221,15 @@ if uploaded_files_kalki:
         entity_name = base_name.split('_')[0]  # "Reliance"
 
         df['Entity'] = entity_name
+        cols = ['Entity'] + [col for col in df.columns if col != 'Entity']
+        df = df[cols]
         kalki_df = pd.concat([kalki_df, df], ignore_index=True)
 
     st.write(kalki_df)
 
     # Download
     output_kalki = BytesIO()
-    with pd.ExcelWriter(output_kalki, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output_kalki, engine='openpyxl') as writer:
         kalki_df.to_excel(writer, index=False)
 
     st.download_button(
@@ -287,7 +297,7 @@ if uploaded_files:
     
     # Prepare Excel file in memory
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
         final_df.to_excel(writer, index=False)
     
     # Convert buffer to bytes
@@ -319,69 +329,117 @@ def load_data(file):
 # Function to create separate Excel sheets by Entity
 
 def create_entity_sheets(data, writer):
-    # List of columns to drop
     cols_to_drop = ["Keywords", "Engagement", "Language", "Country", "Exclusivity", "Topic"]
 
-    # Ensure Entity is the first column
     if 'Entity' in data.columns:
         cols = ['Entity'] + [col for col in data.columns if col != 'Entity']
         data = data[cols]
 
     entities = data['Entity'].unique()
-    
+
     for Entity in entities:
-        # Filter data
         entity_df = data[data['Entity'] == Entity].copy()
         entity_df['Date'] = entity_df['Date'].dt.date
         entity_df['Journalist'] = entity_df['Journalist'].str.replace(r"[\[\]']", "", regex=True)
+        if "Entity" in entity_df.columns:
+            entity_df["Entity"] = entity_df["Entity"].astype(str).str.replace("Client-", "", regex=False)
 
-        # Drop unwanted columns (if they exist)
+        # ── Drop sr no column if present ──────────────────────────────
+        sr_cols = [c for c in entity_df.columns if str(c).strip().lower() in ("sr no", "sr no.", "sr_no", "srno")]
+        entity_df.drop(columns=sr_cols, inplace=True, errors="ignore")
+
+        # ── Move Date to 2nd column (right after Entity) ──────────────
+        if "Date" in entity_df.columns and "Entity" in entity_df.columns:
+            cols_order = ["Entity", "Date"] + [c for c in entity_df.columns if c not in ("Entity", "Date")]
+            entity_df = entity_df[cols_order]
+
         entity_df.drop(columns=[col for col in cols_to_drop if col in entity_df.columns], inplace=True)
 
-        # Write to Excel
-        entity_df.to_excel(writer, sheet_name=Entity, index=False)
-        worksheet = writer.sheets[Entity]
+        clean_entity_name = str(Entity).replace("Client-", "")[:31]
+        entity_df.to_excel(writer, sheet_name=clean_entity_name, index=False)
+        worksheet = writer.sheets[clean_entity_name]
 
-        # Set width and wrap text for columns C to F
-        for col_idx in range(3, 7):  # Columns C to F
-            col_letter = get_column_letter(col_idx)
-            worksheet.column_dimensions[col_letter].width = 48
-            for cell in worksheet[col_letter]:
-                cell.alignment = Alignment(wrap_text=True)
-                
-        first_col_letter = get_column_letter(1)
-        col0_max = entity_df.iloc[:, 0].astype(str).str.len().max()
-        col0_max = 0 if pd.isna(col0_max) else int(col0_max)
-        max_length = max(col0_max, len(str(entity_df.columns[0])))
-        worksheet.column_dimensions[first_col_letter].width = float(max_length + 2)
-        
-        second_col_letter = get_column_letter(2)
-        col1_max = entity_df.iloc[:, 1].astype(str).str.len().max()
-        col1_max = 0 if pd.isna(col1_max) else int(col1_max)
-        max_length = max(col1_max, len(str(entity_df.columns[1])))
-        worksheet.column_dimensions[second_col_letter].width = float(max_length + 2)
+        # ── Identify special columns ──────────────────────────────────
+        col_names = entity_df.columns.tolist()
 
+        headline_cols = [c for c in col_names if any(
+            kw in str(c).lower() for kw in ["headline", "title"]
+        )]
+        summary_cols = [c for c in col_names if any(
+            kw in str(c).lower() for kw in ["summary", "opening text", "hit sentence", "article summary"]
+        )]
+        url_cols = [c for c in col_names if "url" in str(c).lower()]
 
+        special_cols = set(headline_cols + summary_cols + url_cols)
 
-        # Auto-adjust width for columns G onward
-        for idx, column in enumerate(entity_df.columns[6:], start=7):
-            col_letter = get_column_letter(idx)
-            col_max = entity_df[column].astype(str).str.len().max()
-            col_max = 0 if pd.isna(col_max) else int(col_max)
-            max_length = max(col_max, len(str(column)))
-            worksheet.column_dimensions[col_letter].width = float(max_length + 2)
+        # ── Style constants ───────────────────────────────────────────
+        hdr_font  = Font(bold=True, name="Calibri")
+        data_font = Font(name="Calibri")
 
-        # Detect URLs and add hyperlink formatting
-        url_columns = [col for col in entity_df.columns if isinstance(col, str) and 'url' in col.lower()]
-        #url_columns = [col for col in entity_df.columns if 'url' in col.lower()]
-        for url_col in url_columns:
-            col_index = list(entity_df.columns).index(url_col) + 1
-            col_letter = get_column_letter(col_index)
-            for row in range(2, worksheet.max_row + 1):
-                cell = worksheet[f"{col_letter}{row}"]
+        ctr_nowrap = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        ctr_wrap   = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        top_ctr    = Alignment(horizontal="center", vertical="top",    wrap_text=True)
+
+        # ── Header row: bold + center ─────────────────────────────────
+        for cell in worksheet[1]:
+            cell.font      = hdr_font
+            cell.alignment = ctr_nowrap
+
+        # ── Data rows ─────────────────────────────────────────────────
+        for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row):
+            for cell in row:
+                col_name = col_names[cell.column - 1] if cell.column - 1 < len(col_names) else ""
+                cell.font = data_font
+
+                if col_name in headline_cols:
+                    cell.alignment = ctr_wrap          # wrap + center h + center v
+                elif col_name in summary_cols:
+                    cell.alignment = top_ctr           # wrap + center h + top v
+                else:
+                    cell.alignment = ctr_nowrap        # no wrap, center both
+
+        # ── Uniform row height ────────────────────────────────────────
+        for rn in range(1, worksheet.max_row + 1):
+            worksheet.row_dimensions[rn].height = 30
+
+        # ── Column widths ─────────────────────────────────────────────
+        for col_0, col_name in enumerate(col_names):
+            col_ltr   = get_column_letter(col_0 + 1)
+            col_lower = str(col_name).lower()
+
+            if col_name in headline_cols:
+                worksheet.column_dimensions[col_ltr].width = 55
+
+            elif col_name in summary_cols:
+                worksheet.column_dimensions[col_ltr].width = 55
+
+            elif col_name in url_cols:
+                worksheet.column_dimensions[col_ltr].width = 35
+
+            else:
+                # Auto-fit: max of header length vs cell values, capped at 40
+                max_len = len(str(col_name))
+                for r in worksheet.iter_rows(
+                    min_row=2, max_row=worksheet.max_row,
+                    min_col=col_0 + 1, max_col=col_0 + 1
+                ):
+                    for cell in r:
+                        try:
+                            max_len = max(max_len, len(str(cell.value or "")))
+                        except Exception:
+                            pass
+                worksheet.column_dimensions[col_ltr].width = min(float(max_len) + 2, 40)
+
+        # ── URL hyperlinks ────────────────────────────────────────────
+        for url_col in url_cols:
+            col_index = col_names.index(url_col) + 1
+            col_ltr   = get_column_letter(col_index)
+            for rn in range(2, worksheet.max_row + 1):
+                cell = worksheet[f"{col_ltr}{rn}"]
                 if cell.value and isinstance(cell.value, str) and cell.value.startswith("http"):
                     cell.hyperlink = cell.value
-                    cell.style = "Hyperlink"
+                    cell.style     = "Hyperlink"
+                    cell.alignment = ctr_nowrap
 
 def add_entity_info(ws, entity_info, start_row):
     for i, line in enumerate(entity_info.split('\n'), start=1):
@@ -551,7 +609,7 @@ def multiple_dfs1(df_list, sheet_name, wb, comments):
 def add_table_to_slide(slide, df, title, textbox_text):
     rows, cols = df.shape
     left = Inches(0.8)
-    top = Inches(2.8)
+    top = Inches(1.5)
     width = Inches(14)
     max_table_height = Inches(5)
     total_height_needed = Inches(0.8 * (rows + 1))
@@ -1268,12 +1326,12 @@ if date_selected and industry_provided :
             # ── 9. PREVIEW ────────────────────────────────────────────────
             
             k_preview_options = {
-                "SOV Table":                k_Entity_SOV3,
-                "Month-on-Month":           k_sov_dt11,
-                "Publication Table":        k_pubs_table,
-                "Journalist Table":             k_Jour_table,
-                "Journ on Comp, not Client":k_Jour_Comp,
-                "Journ on Client, not Comp":k_Jour_Client,
+                "SOV Table":            strip_client_prefix(k_Entity_SOV3),
+                "Month-on-Month":           strip_client_prefix(k_sov_dt11),
+                "Publication Table":        strip_client_prefix(k_pubs_table),
+                "Journalist Table":             strip_client_prefix(k_Jour_table),
+                "Journ on Comp, not Client":strip_client_prefix(k_Jour_Comp),
+                "Journ on Client, not Comp":strip_client_prefix(k_Jour_Client),
             }
             k_sel = st.selectbox(
                 "Select DataFrame to Preview (Kalki):",
@@ -1318,12 +1376,12 @@ if date_selected and industry_provided :
                 k_Jour_table20_report = k_Jour_table20_display.reset_index(drop=True).copy()
                 # DataFrames for the Report sheet (top-20 slices, renamed)
                 k_dfs_report = [
-                    k_Entity_SOV3,
-                    k_sov_dt11,
-                    k_pubs_table20,
-                    k_Jour_table20_display,
-                    k_Jour_Comp_display,
-                    k_Jour_Client_display,
+                    strip_client_prefix(k_Entity_SOV3),
+                    strip_client_prefix(k_sov_dt11),
+                    strip_client_prefix(k_pubs_table20),
+                    strip_client_prefix(k_Jour_table20_display),
+                    strip_client_prefix(k_Jour_Comp_display),
+                    strip_client_prefix(k_Jour_Client_display),
                 ]
 
                 # Pass these objects explicitly – their last rows get bolded
@@ -1370,9 +1428,9 @@ if date_selected and industry_provided :
                 # Safety check — ensure GrandTotal label is present on last row
                 if str(k_Jour_all_display.iloc[-1]["Journalist"]).strip().lower() != "grandtotal":
                     k_Jour_all_display.iloc[-1, k_Jour_all_display.columns.get_loc("Journalist")] = "GrandTotal"
-                k_dfs_all      = [k_pubs_all,            k_Jour_table_display]
+                k_dfs_all      = [strip_client_prefix(k_pubs_all), strip_client_prefix(k_Jour_table_display)]
                 k_comments_all = ["Publication Table",   "Journalist Table"]
-                k_highlight_all = [k_pubs_all,           k_Jour_table_display]
+                k_highlight_all = [strip_client_prefix(k_pubs_all), strip_client_prefix(k_Jour_table_display)]
      
                 kalki_multiple_dfs1(
                     k_dfs_all,
@@ -1398,8 +1456,12 @@ if date_selected and industry_provided :
                         k_entity_df = kraw_for_entity[
                             kraw_for_entity["Entity"] == k_entity_name
                         ].reset_index(drop=True)
-
-                        k_sheet_name = str(k_entity_name)[:31]
+                        # Strip "Client-" from Entity column values
+                        if "Entity" in k_entity_df.columns:
+                            k_entity_df["Entity"] = k_entity_df["Entity"].astype(str).str.replace("Client-", "", regex=False)
+                        
+                        # Strip "Client-" from sheet name
+                        k_sheet_name = str(k_entity_name).replace("Client-", "")[:31]
                         if "Date" in k_entity_df.columns:
                             k_entity_df["Date"] = pd.to_datetime(k_entity_df["Date"]).dt.date
                         k_entity_df.to_excel(
@@ -1520,8 +1582,10 @@ if date_selected and industry_provided :
                 k_wb_final   = load_workbook(k_excel_io2)
                 k_all_sheets = k_wb_final.sheetnames
                 k_client_sheet = next(
-                    (s for s in k_all_sheets if s.startswith("Client-")), None
-                )
+    (s for s in k_all_sheets if s == k_client_name_clean), None
+) or next(
+    (s for s in k_all_sheets if s.startswith("Client-")), None
+)
                 k_ordered = ["Report", "All Pub-Jour"]
                 if k_client_sheet:
                     k_ordered.append(k_client_sheet)
@@ -1694,8 +1758,14 @@ if date_selected and industry_provided :
                 k_Jour_Comp_ppt   = k_Jour_Comp_display.copy()
                 k_Jour_Client_ppt = k_Jour_Client_display.copy()
 
-                k_dfs_ppt = [k_Entity_SOV3_ppt, k_sov_dt11_ppt, k_pubs_ppt,
-                             k_Jour_ppt, k_Jour_Comp_ppt, k_Jour_Client_ppt]
+                k_dfs_ppt = [
+    strip_client_prefix(k_Entity_SOV3_ppt),
+    strip_client_prefix(k_sov_dt11_ppt),
+    strip_client_prefix(k_pubs_ppt),
+    strip_client_prefix(k_Jour_ppt),
+    strip_client_prefix(k_Jour_Comp_ppt),
+    strip_client_prefix(k_Jour_Client_ppt),
+]
                 k_table_titles_ppt = [
                     f'SOV Table of {k_client_name_clean} and competition',
                     f'Month-on-Month Table of {k_client_name_clean} and competition',
@@ -3005,7 +3075,15 @@ if date_selected and industry_provided :# File Upload Section
             # Extract the brand name from the "Entity" column (after "Client-" if present)
             client_name = entity.split("Client-")[-1]
     
-            dfs = [Entity_SOV3, sov_dt11, pubs_table,Unique_Articles, PType_Entity, Jour_Comp, Jour_Client]
+            dfs = [
+    strip_client_prefix(Entity_SOV3),
+    strip_client_prefix(sov_dt11),
+    strip_client_prefix(pubs_table1),
+    strip_client_prefix(Unique_Articles1O),
+    strip_client_prefix(PType_Entity),
+    strip_client_prefix(Jour_Comp),
+    strip_client_prefix(Jour_Client),
+]
             comments = ['SOV Table', 'Month-on-Month Table', 'Publication Table', 'Journalist Table','Pub Type and Entity Table','Journ-on Comp, not Client','Journ-on Client, not Comp']
     
             # Sidebar for download options
@@ -3014,7 +3092,15 @@ if date_selected and industry_provided :# File Upload Section
             st.sidebar.write("## Download Combined Excel")
             file_name_all = st.sidebar.text_input("Enter file name for Combined Excel", "Combined Excel.xlsx")
             if st.sidebar.button("Download Combined Excel"):
-                dfs = [Entity_SOV3, sov_dt11, pubs_table2O, Unique_Articles2O, PType_Entity, Jour_Comp, Jour_Client]
+                dfs = [
+    strip_client_prefix(Entity_SOV3),
+    strip_client_prefix(sov_dt11),
+    strip_client_prefix(pubs_table1),
+    strip_client_prefix(Unique_Articles2O),
+    strip_client_prefix(PType_Entity),
+    strip_client_prefix(Jour_Comp),
+    strip_client_prefix(Jour_Client),
+]
                 comments =['SOV Table', 'Month-on-Month Table', 'Publication Table', 'Journalist Table','Pub Type and Entity Table','Journ-on Comp, not Client','Journ-on Client, not Comp']
                         
                 entity_info = f"""Entity:{client_name}
@@ -3027,7 +3113,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 wb = load_workbook(excel_io_all)
                 pubs_table.at[pubs_table.index[-1], 'Publication Name'] = 'Total'
         
-                dfs1 = [pubs_table, Unique_Articles]
+                dfs1 = [strip_client_prefix(pubs_table), strip_client_prefix(Unique_Articles)]
                 comments1 = ['Publication Table', 'Journalist Table']
                 multiple_dfs1(dfs1, 'All Pub-Jour', wb, comments1)  # <-- this writes directly into base workbook
                 
@@ -3039,7 +3125,8 @@ News search: All Articles: entity mentioned at least once in the article"""
                     writer.book.worksheets[0].title = "Report"
                 wb_final = load_workbook(excel_io_2)
                 all_sheets = wb_final.sheetnames
-                client_sheet = next((s for s in all_sheets if s.startswith("Client-")), None)
+                client_sheet = next((s for s in all_sheets if s == client_name), None) or \
+               next((s for s in all_sheets if s.startswith("Client-")), None)
                 ordered_sheets = ['Report', 'All Pub-Jour']
                 if client_sheet:
                     ordered_sheets.append(client_sheet)
@@ -3057,19 +3144,17 @@ News search: All Articles: entity mentioned at least once in the article"""
                 
             st.write("## Preview Selected DataFrame")
             dataframes_to_download = {
-            "Entity_SOV1": Entity_SOV3,
-            "Data": data,
-            "Finaldata": finaldata,
-            "Month-on-Month":sov_dt11,
-            "Publication Table":pubs_table,
-           "Journalist Table": Unique_Articles,
-            # "Publication Type and Name Table":PP_table,
-            "Publication Type Table with Entity":PType_Entity,
-            # "Publication type,Publication Name and Entity Table":ppe1,
-            "Entity-wise Sheets": finaldata,                            # Add this option to download entity-wise sheets
-            "Journalist writing on Comp not on Client" : Jour_Comp, 
-            "Journalist writing on Client & not on Comp" : Jour_Client
-        } 
+"Entity_SOV1": strip_client_prefix(Entity_SOV3),
+"Data": data,
+"Finaldata": finaldata,
+"Month-on-Month": strip_client_prefix(sov_dt11),
+"Publication Table": strip_client_prefix(pubs_table),
+"Journalist Table": strip_client_prefix(Unique_Articles),
+"Publication Type Table with Entity": strip_client_prefix(PType_Entity),
+"Entity-wise Sheets": finaldata,
+"Journalist writing on Comp not on Client": strip_client_prefix(Jour_Comp),
+"Journalist writing on Client & not on Comp": strip_client_prefix(Jour_Client)
+}
             selected_dataframe = st.selectbox("Select DataFrame to Preview:", list(dataframes_to_download.keys()))
             st.dataframe(dataframes_to_download[selected_dataframe])
 
@@ -3198,7 +3283,7 @@ News search: All Articles: entity mentioned at least once in the article"""
         
             text_box = slide.shapes.add_textbox(Inches(1.9), Inches(1.0), textbox_width, textbox_height)
             text_frame = text_box.text_frame
-            text_frame.text = "Online Media"
+            text_frame.text = "Online Media/Print Media"
         
             # Set font size to 30 and make the text bold and white
             for paragraph in text_frame.paragraphs:
@@ -3212,79 +3297,57 @@ News search: All Articles: entity mentioned at least once in the article"""
                     paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.MIDDLE
         
             # Add title slide after the first slide
-            slide_layout = prs.slide_layouts[6]
-            slide = prs.slides.add_slide(slide_layout)
+            #slide_layout = prs.slide_layouts[6]
+            #slide = prs.slides.add_slide(slide_layout)
         
-            left = Inches(0.0)  # Adjust the left position as needed
-            top = prs.slide_height - Inches(1)  # Adjust the top position as needed
-            slide.shapes.add_picture(img_path, left, top, height=Inches(1))  # Adjust the height as needed 
+            #left = Inches(0.0)  # Adjust the left position as needed
+            #top = prs.slide_height - Inches(1)  # Adjust the top position as needed
+            #slide.shapes.add_picture(img_path, left, top, height=Inches(1))  # Adjust the height as needed 
                  
             # Clear existing placeholders
-            for shape in slide.placeholders:
-                if shape.has_text_frame:
-                    shape.text_frame.clear()  # Clear existing text frames
+            #for shape in slide.placeholders:
+                #if shape.has_text_frame:
+                    #shape.text_frame.clear()  # Clear existing text frames
         
             # Set title text and format for Parameters slide
-            header_text = "Inferences and Recommendations"
-            header_shape = slide.shapes.add_textbox(Inches(1), Inches(0.2), Inches(14), Inches(0.7))
-            header_frame = header_shape.text_frame
-            header_frame.text = header_text
-            for paragraph in header_frame.paragraphs:
-                for run in paragraph.runs:
-                    run.text = header_text
-                    run.font.size = Pt(30)
-                    run.font.bold = True
-                    run.font.name = 'Helvetica'
-                    run.font.color.rgb = RGBColor(240, 127, 9)
+            #header_text = "Inferences and Recommendations"
+            #header_shape = slide.shapes.add_textbox(Inches(1), Inches(0.2), Inches(14), Inches(0.7))
+            #header_frame = header_shape.text_frame
+            #header_frame.text = header_text
+            #for paragraph in header_frame.paragraphs:
+                #for run in paragraph.runs:
+                    #run.text = header_text
+                    #run.font.size = Pt(30)
+                    #run.font.bold = True
+                    #run.font.name = 'Helvetica'
+                    #run.font.color.rgb = RGBColor(240, 127, 9)
                     # Set alignment to center
-                    paragraph.alignment = PP_ALIGN.CENTER
+                    #paragraph.alignment = PP_ALIGN.CENTER
                     # Set vertical alignment to be at the top
-                    paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP  
+                    #paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP  
         
         
             # Add SOV text
-            sov_text = ("Share of Voice :")
-            sov_text_shape = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(14), Inches(0.5))
-            sov_text_frame = sov_text_shape.text_frame
-            sov_text_frame.word_wrap = True
-            sov_text_frame.clear()  # Clear any default paragraph
+            #sov_text = ("Share of Voice :")
+            #sov_text_shape = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(14), Inches(0.5))
+            #sov_text_frame = sov_text_shape.text_frame
+            #sov_text_frame.word_wrap = True
+            #sov_text_frame.clear()  # Clear any default paragraph
         
-            p = sov_text_frame.add_paragraph()
-            p.text = "Share of Voice :"
-            p.font.size = Pt(20)
-            p.font.name = 'Gill Sans'
-            p.font.underline = True
-            p.font.bold = True
+            #p = sov_text_frame.add_paragraph()
+            #p.text = "Share of Voice :"
+            #p.font.size = Pt(20)
+            #p.font.name = 'Gill Sans'
+            #p.font.underline = True
+            #p.font.bold = True
         
-            sov_text = (
-            f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "• Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
-            "• IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
-            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
-            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
-            f"• Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
-            f"• {client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
-                )
-            sov_text_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
-            sov_text_frame = sov_text_shape.text_frame
-            sov_text_frame.word_wrap = True
-            sov_text_frame.clear()  # Clear any default paragraph
+            #sov_text 
         
         
-            p = sov_text_frame.add_paragraph()
-            p.text = (
-            f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "• Among these, IIT Madras dominates the conversation with 35% of the total SOV, indicating significant media coverage and visibility.\n"
-            "• IIT Delhi follows IIT Madras, capturing 21% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 20%, 17%, and 6% of the SOV respectively.\n"
-            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e. last in the SOV.\n"
-            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.\n"
-            f"• Given the relatively lower SOV compared to peers like IIT Delhi, IIT Madras, and others, there are opportunities for {client_name} to enhance its online presence and visibility through strategic communications efforts.\n"
-            f"• {client_name} has received 239 all mentions and 44 prominent articles in online media and stands last in both the SOVs.\n"
-            )
-            p.font.size = Pt(18)
-            p.font.name = 'Gill Sans'
+            #p = sov_text_frame.add_paragraph()
+            #p.text 
+            #p.font.size = Pt(18)
+            #p.font.name = 'Gill Sans'
         
         #     # Add Source text
         #     source_text = ("Publications :")
@@ -3319,227 +3382,82 @@ News search: All Articles: entity mentioned at least once in the article"""
         #     p.font.name = 'Gill Sans'
 
               # Add News Search text
-            news_search_text = ("Publication Types :" )
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = "Publication Type :"
-            p.font.size = Pt(20)
-            p.font.name = 'Gill Sans'
-            p.font.underline = True
-            p.font.bold = True
+            #news_search_text = ("Publication Types :" )
+            #news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
+            #news_search_frame = news_search_shape.text_frame
+            #news_search_frame.word_wrap = True
+            #news_search_frame.clear()  # Clear any default paragraph
+            #p = news_search_frame.add_paragraph()
+            #p.text = "Publication Type :"
+            #p.font.size = Pt(20)
+            #p.font.name = 'Gill Sans'
+            #p.font.underline = True
+            #p.font.bold = True
         
-            news_search_text = (f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
-                f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n"
-                           )
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = (f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
-        f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n"
-                           )
-            p.font.size = Pt(18)
-            p.font.name = 'Gill Sans'
+         
+            #news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
+            #news_search_frame = news_search_shape.text_frame
+            #news_search_frame.word_wrap = True
+            #news_search_frame.clear()  # Clear any default paragraph
+            #p = news_search_frame.add_paragraph()
+            #
+            #p.font.size = Pt(18)
+            #p.font.name = 'Gill Sans'
         
             # Add title slide after the first slide
-            slide_layout = prs.slide_layouts[6]
-            slide = prs.slides.add_slide(slide_layout)
+            #slide_layout = prs.slide_layouts[6]
+            #slide = prs.slides.add_slide(slide_layout)
         
         
             # Clear existing placeholders
-            for shape in slide.placeholders:
-                if shape.has_text_frame:
-                    shape.text_frame.clear()  # Clear existing text frames
+            #for shape in slide.placeholders:
+                #if shape.has_text_frame:
+                    #shape.text_frame.clear()  # Clear existing text frames
         
         
             # Set title text and format for Parameters slide
-            header_text = "Inferences and Recommendations"
-            header_shape = slide.shapes.add_textbox(Inches(1), Inches(0.3), Inches(14), Inches(0.5))
-            header_frame = header_shape.text_frame
-            header_frame.text = header_text 
-            for paragraph in header_frame.paragraphs:
-                for run in paragraph.runs:
-                    run.text = header_text
-                    run.font.size = Pt(30)
-                    run.font.bold = True
-                    run.font.name = 'Helvetica'
-                    run.font.color.rgb = RGBColor(240, 127, 9)
+            #header_text = "Inferences and Recommendations"
+            #header_shape = slide.shapes.add_textbox(Inches(1), Inches(0.3), Inches(14), Inches(0.5))
+            #header_frame = header_shape.text_frame
+            #header_frame.text = header_text 
+            #for paragraph in header_frame.paragraphs:
+                #for run in paragraph.runs:
+                    #run.text = header_text
+                    #run.font.size = Pt(30)
+                    #run.font.bold = True
+                    #run.font.name = 'Helvetica'
+                    #run.font.color.rgb = RGBColor(240, 127, 9)
                     # Set alignment to center
-                    paragraph.alignment = PP_ALIGN.CENTER
+                    #paragraph.alignment = PP_ALIGN.CENTER
                     # Set vertical alignment to be at the top
-                    paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
+                    #paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
         
         
             # Add News Search text
-            news_search_text = ("Journalists :")
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = "Journalists :"
-            p.font.size = Pt(20)
-            p.font.name = 'Gill Sans'
-            p.font.underline = True
-            p.font.bold = True
+            #news_search_text = ("Journalists :")
+            #news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(0.6), Inches(14), Inches(0.5))
+            #news_search_frame = news_search_shape.text_frame
+            #news_search_frame.word_wrap = True
+            #news_search_frame.clear()  # Clear any default paragraph
+            #p = news_search_frame.add_paragraph()
+           #p.text = "Journalists :"
+            #p.font.size = Pt(20)
+            #p.font.name = 'Gill Sans'
+            #p.font.underline = True
+            #p.font.bold = True
         
             # Add News Search text
-            news_search_text = (f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
-                           f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles, {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} articles.\n"
-                            f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
-                            f"• A total of {total_journalists} journalists have written {total_articles} unique articles covering {client_name} and its competitors, out of which, {non_zero_journalists} journalists have specifically written {articles_for_client} articles mentioning {client_name} i.e of the total journalists writing on {client_name} and its competitors only {client_journalist_percentage}% them have mentioned {client_name} in their articles.\n"
-                           f"• A total of {engage_with} journalists have not mentioned {client_name} in their articles. Inorder to increase it's visibility {client_column} needs to engage with these {engage_with} journalists.\n"
-                           )
-            news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
-            news_search_frame = news_search_shape.text_frame
-            news_search_frame.word_wrap = True
-            news_search_frame.clear()  # Clear any default paragraph
-            p = news_search_frame.add_paragraph()
-            p.text = (f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
-                           f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles, {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} article.\n"
-                            f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
-                            f"• A total of {total_journalists} journalists have written {total_articles} unique articles covering {client_name} and its competitors, out of which, {non_zero_journalists} journalists have specifically written {articles_for_client} articles mentioning {client_name} i.e of the total journalists writing on {client_name} and its competitors only {client_journalist_percentage}% them have mentioned {client_name} in their articles.\n"
-                           f"• A total of {engage_with} journalists have not mentioned {client_name} in their articles. Inorder to increase it's visibility {client_column} needs to engage with these {engage_with} journalists.\n"
-                           )
-            p.font.size = Pt(18)
-            p.font.name = 'Gill Sans'
+          
+            #news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
+            #news_search_frame = news_search_shape.text_frame
+            #news_search_frame.word_wrap = True
+            #news_search_frame.clear()  # Clear any default paragraph
+            #p = news_search_frame.add_paragraph()
+          
+            #p.font.size = Pt(18)
+            #p.font.name = 'Gill Sans'
 
-            # Add Source text
-            source_text = ("Publications :")
-            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.8), Inches(14), Inches(1))
-            source_frame = source_shape.text_frame
-            source_frame.word_wrap = True
-            source_frame.clear()  # Clear any default paragraph
-            p = source_frame.add_paragraph()
-            p.text = "Publications :"
-            p.font.size = Pt(20)
-            p.font.name = 'Gill Sans'
-            p.font.underline = True
-            p.font.bold = True
-        
-        
-            source_text = (
-            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
-        f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-       
-        )
-            source_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.1), Inches(14), Inches(1))
-            source_frame = source_shape.text_frame
-            source_frame.word_wrap = True
-            source_frame.clear()  # Clear any default paragraph
-            p = source_frame.add_paragraph()
-            p.text = (
-            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
-        f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-      
-        )
-            p.font.size = Pt(18)
-            p.font.name = 'Gill Sans'
-        
-        #     # Add News Search text
-        #     news_search_text = ("Publication Types :" )
-        #     news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(5.6), Inches(14), Inches(0.5))
-        #     news_search_frame = news_search_shape.text_frame
-        #     news_search_frame.word_wrap = True
-        #     news_search_frame.clear()  # Clear any default paragraph
-        #     p = news_search_frame.add_paragraph()
-        #     p.text = "Publication Type :"
-        #     p.font.size = Pt(20)
-        #     p.font.name = 'Gill Sans'
-        #     p.font.underline = True
-        #     p.font.bold = True
-        
-        #     news_search_text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-        #         f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
-        #         f"•{client_name} may find value in engaging more with {', '.join(publication_types[:-1])} and {publication_types[-1]} to expand her reach and visibility among broader audiences.\n"
-        #                    )
-        #     news_search_shape = slide.shapes.add_textbox(Inches(0.3), Inches(6.0), Inches(14), Inches(0.5))
-        #     news_search_frame = news_search_shape.text_frame
-        #     news_search_frame.word_wrap = True
-        #     news_search_frame.clear()  # Clear any default paragraph
-        #     p = news_search_frame.add_paragraph()
-        #     p.text = (f"•The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-        #         f"•Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
-        # f"•{client_name} may find value in engaging more with {', '.join(publication_types[:-1])} and {publication_types[-1]} to expand her reach and visibility among broader audiences.\n"
-        #                    )
-        #     p.font.size = Pt(18)
-        #     p.font.name = 'Gill Sans'
-                
-            # Add title slide after the first slide
-            slide_layout = prs.slide_layouts[6]
-            slide = prs.slides.add_slide(slide_layout)
-        
-            # Clear existing placeholders
-            for shape in slide.placeholders:
-                if shape.has_text_frame:
-                    shape.text_frame.clear()  # Clear existing text frames
-                
-            # Set title text and format for Parameters slide
-            header_text = "Inferences and Recommendations"
-            header_shape = slide.shapes.add_textbox(Inches(1), Inches(0.3), Inches(14), Inches(0.5))
-            header_frame = header_shape.text_frame
-            header_frame.text = header_text
-            for paragraph in header_frame.paragraphs:
-                for run in paragraph.runs:
-                    run.text = header_text
-                    run.font.size = Pt(30)
-                    run.font.bold = True
-                    run.font.name = 'Helvetica'
-                    run.font.color.rgb = RGBColor(240, 127, 9)
-                    # Set alignment to center
-                    paragraph.alignment = PP_ALIGN.CENTER
-                    # Set vertical alignment to be at the top
-                    paragraph.vertical_anchor = MSO_VERTICAL_ANCHOR.TOP
-        
-        
-            # # Add Time Period text
-            time_period_text = ("Monthly Coverage , Peak and Topics :")
-            time_period_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.0), Inches(14), Inches(0.5))
-            time_period_frame = time_period_shape.text_frame
-            time_period_frame.text = time_period_text
-            time_period_frame.word_wrap = True
-            time_period_frame.clear() 
-        
-            p = time_period_frame.add_paragraph()
-            p.text = "Monthly Coverage , Peak and Topics :"
-            p.font.size = Pt(20)
-            p.font.name = 'Gill Sans'
-            p.font.underline = True
-            p.font.bold = True
-        
-        
-            time_period_text = (f"• {client_name} consistently maintains a high level of coverage throughout the months, with peak in month {topdt_1_name}.\n"
-        "• These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
-        f"• {client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
-        f"• While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
-        f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
-        "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
-        "2.Purohit allows IIT-Ropar to set up campus in Edu City.\n"
-                           )
-            time_period_shape = slide.shapes.add_textbox(Inches(0.3), Inches(1.4), Inches(14), Inches(0.5))
-            time_period_frame = time_period_shape.text_frame
-            time_period_frame.text = time_period_text
-            time_period_frame.word_wrap = True
-            time_period_frame.clear() 
-        
-            p = time_period_frame.add_paragraph()
-            p.text = (f"•{client_name} consistently maintains a high level of coverage throughout the months, with peak in month {topdt_1_name}.\n"
-        "• These spikes indicate significant media attention and potentially notable events or announcements associated with her during those periods.\n"
-        f"• {client_name}'s received very less coverage in every month, with peak in {topdt_1_name}.\n"
-        f"• While {client_name}'s coverage is relatively lower compared to IIT Madras and Delhi, it still experiences spikes indicating periods of increased media visibility.\n"
-        f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
-        "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
-        "2.Purohit allows IIT-Ropar to set up campus in Edu City.\n"
-                           )
-            p.font.size = Pt(18)
-            p.font.name = 'Gill Sans'
-        
+           
         
             # Sidebar for PowerPoint download settings
             st.sidebar.write("## Download All DataFrames as a PowerPoint File")
@@ -3550,39 +3468,19 @@ News search: All Articles: entity mentioned at least once in the article"""
                 numeric_columns = pubs_table1.select_dtypes(include=['number']).columns
                 pubs_table1[numeric_columns] = pubs_table1[numeric_columns].astype(int)
                 Jour_table1 = Jour_table.head(10)
-                dfs = [Entity_SOV3, sov_dt11, pubs_table1,Unique_Articles1O, PType_Entity, Jour_Comp, Jour_Client]
+                dfs = [
+    strip_client_prefix(Entity_SOV3),
+    strip_client_prefix(sov_dt11),
+    strip_client_prefix(pubs_table2O),
+    strip_client_prefix(Unique_Articles2O),
+    strip_client_prefix(PType_Entity),
+    strip_client_prefix(Jour_Comp),
+    strip_client_prefix(Jour_Client),
+]
                 table_titles = [f'SOV Table of {client_name} and competition', f'Month-on-Month Table of {client_name} and competition', f'Publication Table on {client_name} and competition', f'Journalist writing on {client_name} and competition',
                             f'Publication Types writing on {client_name} and competition',f'Journalists writing on Comp and not on {client_name}', f'Journalists writing on {client_name} and not on Comp'
                             ]
-                textbox_text = [ f"• {client_name} and its peers collectively received a total of {total_news_count} news mentions online during the specified time period.\n"
-            "• Among these, IIT Madras dominates the conversation with 28% of the total SOV, indicating significant media coverage and visibility.\n"
-            "• IIT Delhi follows IIT Madras, capturing 25% of the SOV. While its coverage is notably lower than IIT Madras, it still indicates a considerable presence in the online space.\n"
-            "• IIT Bombay, IIT Kanpur, and IIT Roorkee also receive notable coverage, with 21%, 17%, and 7% of the SOV respectively.\n"
-            f"• {client_name} holds a smaller share of the online conversation compared to its peers, with just 1% of the SOV and ranks 6th i.e., last in the SOV.\n"
-            f"• Despite ranking lower in terms of SOV, {client_name}'s presence indicates some level of visibility and recognition within the online media landscape.",
-               f"• {client_name} witnessed its highest news coverage in {topdt_1_name}, with {topdt_1_count} articles. The news during this period mainly revolved around topics such as:\n"
-            "1.IIT Ropar Placements: Average salary, placed students increase despite Covid slowdown\n"
-            "2.Purohit allows IIT-Ropar to set up campus in Edu City\n"
-            "3.UPES Runway Incubator Signs MoU With IIT Ropar’s Ihub – Awadh\n"
-            "4.SKUAST-K, IIT Ropar hold 2-day event"
-            , 
-            f"• The leading publications reporting on {client_name} and its competitors are {top_1_name}, contributing {top_1_count} unique articles, followed by {top_2_name} with {top_2_count} unique articles, and {top_3_name} with {top_3_count} unique articles.\n"
-            f"• Among these ,publications covering news on {client_name} specifically are {topc_1_name} takes the lead with {topc_1_count} articles, followed by {topc_2_name} with {topc_2_count} articles, and {topc_3_name} with {topc_3_count} articles.\n"
-           f"• The top 10 publications writing articles on {client_name} contribute {top10_pub_perc}% (which is {top10_pub_sum} of the total {client_sov_count}  articles).\n" ,
-            f"• The top journalists reporting on {client_name} and its competitors are {topj_1_name} from {topjt_1_name} with {topj_1_count} unique articles, followed by {topj_2_name} from {topjt_2_name} with {topj_2_count} unique articles, and {topj_3_name} from {topjt_3_name} with {topj_3_count} unique articles.\n"
-            f"• Among the journalists specifically covering {client_name} are {journalist_name1} from {publication_name1} with {client_count1} articles , {journalist_name2} from {publication_name2} has authored {client_count2} articles and {journalist_name3} from {publication_name3} written {client_count3} article.\n"
-           f"• {client_name} has received a total of {client_sov} articles in news coverage. Among these, {bureau_articles} i.e {bureau_percentage}% of the articles were filed by Bureaus, while the remaining {individual_articles} i.e {individual_percentage}% were written by individual journalists.\n"
-            ,
-                           f"• The leading publication types writing on {client_name} and its competitors are {topt_1_name}, contributing {topt_1_count} articles, followed by {topt_2_name} with {topt_2_count} articles, and {topt_3_name} with {topt_3_count} articles.\n"
-                                f"• Top Publication Types writing on {client_name} are {topp_1_name} and  {topp_2_name} they both contribute {topp_1_count} articles & {topp_2_count} articles respectively of the total news coverage on {client_name}.\n"
-            f"• {client_name} may find value in engaging more with {publication_types_str} to expand their reach and visibility among broader audiences to expand their reach and visibility among broader audiences.\n",
-        
-                                f"• The top journalists writing on competitors and not on {client_name}  are {topjc_1_name} from {topjp_1_name} with {topjc_1_count} unique articles, followed by {topjc_2_name} from {topjp_2_name} with {topjc_2_count} unique articles, and {topjc_3_name} from {topjp_3_name} with {topjc_3_count} unique articles.\n"
-        f"• These journalists have not written any articles on {client_name} so there is an opportunity for {client_name} to engage with these journalists to broaden its coverage and influence within the industry.\n",
-        
-        f"• The journalists reporting on {client_name} and not on its competitors are {journalist_client1} from {publication_client1} with {jour_client1} article followed by {journalist_client2} from {publication_client2} with {jour_client2} articles.\n",
-        
-                              ]
+                textbox_text = [" "," "," "," "," "," "," "]
               
         
                 # Loop through each DataFrame and create a new slide with a table
@@ -3950,7 +3848,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 if selected_dataframe in dataframes_to_download:
                     selected_df = dataframes_to_download[selected_dataframe]
                     excel_io_selected = io.BytesIO()
-                    with pd.ExcelWriter(excel_io_selected, engine="xlsxwriter", mode="xlsx") as writer:
+                    with pd.ExcelWriter(excel_io_selected, engine="openpyxl") as writer:
                         selected_df.to_excel(writer, index=True)
                         excel_io_selected.seek(0)
                         b64_selected = base64.b64encode(excel_io_selected.read()).decode()
@@ -3964,7 +3862,7 @@ News search: All Articles: entity mentioned at least once in the article"""
                 if download_formats == "Excel":
                     # Download all DataFrames as a single Excel file
                     excel_io = io.BytesIO()
-                    with pd.ExcelWriter(excel_io, engine="xlsxwriter") as writer:
+                    with pd.ExcelWriter(excel_io, engine="openpyxl") as writer:
                         for df, comment in zip(dfs, comments):
                             df.to_excel(writer, sheet_name=comment, index=False)
                     excel_io.seek(0)
@@ -4007,6 +3905,8 @@ import matplotlib.pyplot as plt
 from pprint import pprint
 import logging
 import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="xlsxwriter")
+
 from nltk.corpus import stopwords
 # import gensim.corpora as corpora
 from io import BytesIO
