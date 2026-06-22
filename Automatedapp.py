@@ -945,7 +945,7 @@ def add_image_to_slide11(slide, img_path11):
 
 
 def top_10_dfs(df_list, file_name, comments, top_11_flags):
-    writer = pd.ExcelWriter(file_name, engine='xlsxwriter')
+    writer = pd.ExcelWriter(file_name, engine='openpyxl')
     row = 2
     for dataframe, comment, top_11_flag in zip(df_list, comments, top_11_flags):
         if top_11_flag:
