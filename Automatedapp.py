@@ -200,41 +200,92 @@ def extract_entity_name(file_path):
     entity_name = base_name.split('_or_')[0].replace("_", " ").split('-')[0].strip()
     return entity_name
 
+#
 st.title('Online Excel File Merger & Entity Extractor (Kalki)')
+
 uploaded_files_kalki = st.file_uploader(
     "Upload your Kalki Excel files",
     accept_multiple_files=True,
     type=['xlsx'],
-    key="kalki_uploader"          # unique key so it doesn't clash with Meltwater uploader
+    key="kalki_uploader"
 )
 
 if uploaded_files_kalki:
     kalki_df = pd.DataFrame()
-
+    
     for uploaded_file in uploaded_files_kalki:
         df = pd.read_excel(uploaded_file)
-
-        # Entity = everything BEFORE the first underscore in the filename
-        # e.g.  "Reliance_Jan2024.xlsx"  →  "Reliance"
-        raw_name = uploaded_file.name          # "Reliance_Jan2024.xlsx"
-        base_name = raw_name.rsplit('.', 1)[0] # "Reliance_Jan2024"
-        entity_name = base_name.split('_')[0]  # "Reliance"
-
+        
+        # Extract Entity from filename
+        raw_name = uploaded_file.name
+        base_name = raw_name.rsplit('.', 1)[0]
+        entity_name = base_name.split('_')[0]
+        
         df['Entity'] = entity_name
         cols = ['Entity'] + [col for col in df.columns if col != 'Entity']
         df = df[cols]
+        
         kalki_df = pd.concat([kalki_df, df], ignore_index=True)
 
-    st.write(kalki_df)
+    st.write("Preview of merged data:")
+    st.dataframe(kalki_df)
 
-    # Download
+    # ====================== CREATE EXCEL WITH HYPERLINKS ======================
     output_kalki = BytesIO()
+    
     with pd.ExcelWriter(output_kalki, engine='openpyxl') as writer:
-        kalki_df.to_excel(writer, index=False)
+        kalki_df.to_excel(writer, index=False, sheet_name='Merged_Data')
+    
+    # Load the workbook to add hyperlinks
+    output_kalki.seek(0)
+    wb = load_workbook(output_kalki)
+    ws = wb.active
+
+    # Find columns that likely contain URLs
+    url_keywords = ['url', 'link', 'website', 'web', 'href']
+    hyperlink_columns = []
+
+    for col_idx, col_name in enumerate(kalki_df.columns, start=1):
+        col_name_lower = str(col_name).lower()
+        if any(keyword in col_name_lower for keyword in url_keywords):
+            hyperlink_columns.append(col_idx)
+        else:
+            # Also check if first few values look like URLs
+            sample_values = kalki_df[col_name].dropna().astype(str).head(5)
+            if sample_values.str.startswith(('http://', 'https://')).any():
+                hyperlink_columns.append(col_idx)
+
+    # Apply hyperlinks
+    for col_idx in hyperlink_columns:
+        col_letter = get_column_letter(col_idx)
+        for row in range(2, ws.max_row + 1):  # Skip header
+            cell = ws[f"{col_letter}{row}"]
+            url = str(cell.value).strip()
+            if url.startswith(('http://', 'https://')):
+                cell.hyperlink = url
+                cell.font = Font(color="0000FF", underline="single")  # Blue + underline
+
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        ws.column_dimensions[column].width = adjusted_width
+
+    # Save final file
+    final_output = BytesIO()
+    wb.save(final_output)
+    final_output.seek(0)
 
     st.download_button(
-        label="Download Merged Kalki Excel",
-        data=output_kalki.getvalue(),
+        label="📥 Download Merged Kalki Excel (with Hyperlinks)",
+        data=final_output.getvalue(),
         file_name='merged_KalkiData_with_entity.xlsx',
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
