@@ -3471,8 +3471,8 @@ News search: All Articles: entity mentioned at least once in the article"""
                 dfs = [
     strip_client_prefix(Entity_SOV3),
     strip_client_prefix(sov_dt11),
-    strip_client_prefix(pubs_table2O),
-    strip_client_prefix(Unique_Articles2O),
+    strip_client_prefix(pubs_table1),
+    strip_client_prefix(Jour_table1),
     strip_client_prefix(PType_Entity),
     strip_client_prefix(Jour_Comp),
     strip_client_prefix(Jour_Client),
