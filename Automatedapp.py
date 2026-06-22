@@ -4872,7 +4872,7 @@ elif file1 and not file:
     
     # Create an in-memory buffer for the Excel workbook
     output = io.BytesIO()
-    updated_workbook = pd.ExcelWriter(output, engine='xlsxwriter')
+    updated_workbook = pd.ExcelWriter(output, engine='openpyxl')
     
     # Example dictionaries for keywords and topic mapping (adjust as needed)
     entity_keywords = {
@@ -5274,7 +5274,7 @@ elif file and file1:
         
         # Create an in-memory buffer for the Excel workbook
         output = io.BytesIO()
-        updated_workbook = pd.ExcelWriter(output, engine='xlsxwriter')
+        updated_workbook = pd.ExcelWriter(output, engine='openpyxl')
         
         # Example dictionaries for keywords and topic mapping (adjust as needed)
         entity_keywords = {
