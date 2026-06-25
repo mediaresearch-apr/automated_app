@@ -2400,7 +2400,9 @@ if date_selected and industry_provided :# File Upload Section
             Unique_Articles.loc[bn_index+1, 'Journalist'] = 'Total'
             ordered_cols = ['Journalist', 'Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in Unique_Articles.columns] + (['Total'] if 'Total' in Unique_Articles.columns else [])
             Unique_Articles = Unique_Articles[ordered_cols]
-            Unique_Articles['Client %'] = ((Unique_Articles[client_columndt] / Unique_Articles['Total']) * 100).round().astype(int)
+            Unique_Articles['Client %'] = (
+    (Unique_Articles[client_columndt] / Unique_Articles['Total']) * 100
+).replace([float('inf'), float('-inf')], 0).fillna(0).round().astype(int)
             pub_table1 = pd.crosstab(finaldata_non_exploded['Publication Name'], finaldata_non_exploded['Entity'])
             pub_table1 = pub_table1.reset_index(level=0)
             finaldatauq = finaldata_non_exploded.copy()
