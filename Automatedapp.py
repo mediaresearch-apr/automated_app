@@ -2651,8 +2651,8 @@ if date_selected and industry_provided :# File Upload Section
             topp_1_name = df_topp1.iloc[0]["Publication Type"]
             topp_1_count = df_topp1.iloc[0][client_column]
     
-            topp_2_name = df_topp2.iloc[0]["Publication Type"]
-            topp_2_count = df_topp2.iloc[0][client_column]
+            #topp_2_name = df_topp2.iloc[0]["Publication Type"]
+            #topp_2_count = df_topp2.iloc[0][client_column]
     
     
             # # Extract the top 3 publications and their counts
