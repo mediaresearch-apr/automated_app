@@ -2532,8 +2532,8 @@ if date_selected and industry_provided :# File Upload Section
             total_articles = filtered_df[filtered_df['Total'].notna() & (filtered_df['Total'] > 0)]['Total'].sum()
             non_zero_journalists = filtered_df[filtered_df[client_column] > 0].shape[0]
             articles_for_client = filtered_df[filtered_df[client_column] > 0][client_column].sum()
-            client_journalist_percentage =  int(round((non_zero_journalists/ total_journalists) * 100,0))
-            engage_with = total_journalists-non_zero_journalists
+            #client_journalist_percentage =  int(round((non_zero_journalists/ total_journalists) * 100,0))
+            #engage_with = total_journalists-non_zero_journalists
         
     
             # Save them in separate DataFrames
