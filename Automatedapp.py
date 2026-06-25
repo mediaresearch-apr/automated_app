@@ -2795,28 +2795,28 @@ if date_selected and industry_provided :# File Upload Section
             client_columns = [col for col in Unique_Articles1O.columns if col.startswith("Client-")][0]
             Unique_Articles1O = Unique_Articles1O.rename(columns={'Total': 'Total Unique Articles'})
             filtered_df = Unique_Articles[~Unique_Articles['Journalist'].isin(['Bureau News', 'Total'])].sort_values(by=client_columns, ascending = False)
-            journalist_name1 = filtered_df.iloc[0]["Journalist"]
-            publication_name1 = filtered_df.iloc[0]["Publication Name"]
-            client_count1 = filtered_df.iloc[0][client_column]
-            if len(filtered_df)>=2:
-                journalist_name2 = filtered_df.iloc[1]["Journalist"]
-                publication_name2 = filtered_df.iloc[1]["Publication Name"]
-                client_count2 = filtered_df.iloc[1][client_column]
-                if len(filtered_df)>=3:
-                    journalist_name3 = filtered_df.iloc[2]["Journalist"]
-                    publication_name3 = filtered_df.iloc[2]["Publication Name"]
-                    client_count3 = filtered_df.iloc[2][client_column]
-                else:
-                    journalist_name3 = ""
-                    publication_name3 = ""
-                    client_count3 = 0
-            else:
-                journalist_name2 = ""
-                publication_name2 = ""
-                client_count2 = 0
-                journalist_name3 = ""
-                publication_name3 = ""
-                client_count3 = 0
+            #journalist_name1 = filtered_df.iloc[0]["Journalist"]
+            #publication_name1 = filtered_df.iloc[0]["Publication Name"]
+            #client_count1 = filtered_df.iloc[0][client_column]
+            #if len(filtered_df)>=2:
+                #journalist_name2 = filtered_df.iloc[1]["Journalist"]
+                #publication_name2 = filtered_df.iloc[1]["Publication Name"]
+                #client_count2 = filtered_df.iloc[1][client_column]
+                #if len(filtered_df)>=3:
+                    #journalist_name3 = filtered_df.iloc[2]["Journalist"]
+                    #publication_name3 = filtered_df.iloc[2]["Publication Name"]
+                    #client_count3 = filtered_df.iloc[2][client_column]
+                #else:
+                    #journalist_name3 = ""
+                    #publication_name3 = ""
+                    #client_count3 = 0
+            #else:
+                #journalist_name2 = ""
+                #publication_name2 = ""
+                #client_count2 = 0
+                #journalist_name3 = ""
+                #publication_name3 = ""
+                #client_count3 = 0
           
     
             # Find columns containing the word 'Client'
