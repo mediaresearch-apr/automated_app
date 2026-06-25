@@ -201,10 +201,10 @@ def extract_entity_name(file_path):
     return entity_name
 
 #
-st.title('Online Excel File Merger & Entity Extractor (Kalki)')
+st.title('Online Excel File Merger & Entity Extractor (TW)')
 
 uploaded_files_kalki = st.file_uploader(
-    "Upload your Kalki Excel files",
+    "Upload your TW Excel files",
     accept_multiple_files=True,
     type=['xlsx'],
     key="kalki_uploader"
@@ -284,9 +284,9 @@ if uploaded_files_kalki:
     final_output.seek(0)
 
     st.download_button(
-        label="📥 Download Merged Kalki Excel (with Hyperlinks)",
+        label="📥 Download Merged TW Excel (with Hyperlinks)",
         data=final_output.getvalue(),
-        file_name='merged_KalkiData_with_entity.xlsx',
+        file_name='merged_TW_with_entity.xlsx',
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 # Web app title
@@ -1072,15 +1072,15 @@ if date_selected:
         industry = industry_input.strip()
         
 if date_selected and industry_provided :
-    st.sidebar.write("## Upload Kalki Online file for tables")
+    st.sidebar.write("## Upload TW Online file for tables")
     kalki_online_file = st.sidebar.file_uploader(
-        "Upload Kalki Data File (Excel or CSV)",
+        "Upload TW Data File (Excel or CSV)",
         type=["xlsx", "csv"],
         key="kalki_online_tables_uploader",
     )
      
     if kalki_online_file:
-        st.sidebar.write("Kalki File Uploaded Successfully!")
+        st.sidebar.write("TW File Uploaded Successfully!")
         kalki_data_raw = load_data(kalki_online_file)
      
         if kalki_data_raw is not None:
@@ -1392,16 +1392,16 @@ if date_selected and industry_provided :
             st.dataframe(k_preview_options[k_sel])
             st.sidebar.write("## Download Options")
             # ── 10. DOWNLOAD COMBINED EXCEL ───────────────────────────────
-            st.sidebar.write("## Download Kalki Combined Excel")
+            st.sidebar.write("## Download TW Combined Excel")
             kalki_file_name = st.sidebar.text_input(
-                "File name for Kalki Combined Excel",
-                "Kalki_Combined_Excel.xlsx",
+                "File name for TW Combined Excel",
+                "TW_Combined_Excel.xlsx",
             )
             k_client_name_clean = (
                     k_client_col.replace("Client-", "") if k_client_col else ""
                 )
      
-            if st.sidebar.button("Download Kalki Combined Excel"):
+            if st.sidebar.button("Download TW Combined Excel"):
      
                 k_client_name_clean = (
                     k_client_col.replace("Client-", "") if k_client_col else ""
@@ -1409,7 +1409,7 @@ if date_selected and industry_provided :
                 k_entity_info = (
                     f"Entity:{k_client_name_clean}\n"
                     f"Time Period of analysis: {start_date} to {end_date}\n"
-                    "Source: (Online) Kalki All publications.\n"
+                    "Source: (Online) Talkwalker All publications.\n"
                     "News search: All Articles: entity mentioned at least once in the article"
                 )
      
@@ -1652,7 +1652,7 @@ if date_selected and industry_provided :
                 k_href = (
                     f'<a href="data:application/vnd.openxmlformats-officedocument'
                     f'.spreadsheetml.sheet;base64,{k_b64}" '
-                    f'download="{kalki_file_name}">Download Kalki Combined Excel</a>'
+                    f'download="{kalki_file_name}">Download TW Combined Excel</a>'
                 )
                 
                 # ── Build Kalki presentation ────────────────────────────────────────
@@ -1660,14 +1660,14 @@ if date_selected and industry_provided :
 
             # ← This closing parenthesis ends the "Download Kalki Combined Excel" if-block
             # ── Build Kalki presentation ──────────────────────────────────────
-            st.sidebar.write("## Download Kalki DataFrames as a PowerPoint File")
+            st.sidebar.write("## Download TW DataFrames as a PowerPoint File")
             k_pptx_file_name = st.sidebar.text_input(
-                "Enter file name for Kalki PowerPoint",
-                "kalki_dataframes_presentation.pptx",
+                "Enter file name for TW PowerPoint",
+                "TW_dataframes_presentation.pptx",
                 key="kalki_pptx_name"
             )
 
-            if st.sidebar.button("Download Kalki PowerPoint", key="kalki_pptx_button"):
+            if st.sidebar.button("Download TW PowerPoint", key="kalki_pptx_button"):
                 def add_kalki_table_to_slide(slide, df, title, textbox_text, prs_obj):
                     rows, cols = df.shape
                     left = Inches(0.8)
@@ -1869,16 +1869,16 @@ if date_selected and industry_provided :
                 k_pptx_output.seek(0)
 
                 st.sidebar.download_button(
-                    label="⬇️ Click here to Download Kalki PPT",
+                    label="⬇️ Click here to Download TW PPT",
                     data=k_pptx_output,
                     file_name=k_pptx_file_name,
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                     key="kalki_pptx_download"
                 )
             # ── Kalki Grok Prompts ────────────────────────────────────────
-            st.sidebar.write("## Download Kalki Grok Prompts (.docx)")
+            st.sidebar.write("## Download TW Grok Prompts (.docx)")
 
-            if st.sidebar.button("Download Kalki Grok Prompts", key="kalki_grok_button"):
+            if st.sidebar.button("Download TW Grok Prompts", key="kalki_grok_button"):
                 from docx import Document
                 from docx.shared import RGBColor as DocxRGBColor, Pt as DocxPt
 
@@ -2230,8 +2230,8 @@ if date_selected and industry_provided :
                 k_grok_b64 = base64.b64encode(k_grok_buffer.read()).decode()
                 k_grok_href = (
                     f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;'
-                    f'base64,{k_grok_b64}" download="Kalki_Grok_Prompts_{k_c}.docx">'
-                    f'Download Kalki Grok Prompts (.docx)</a>'
+                    f'base64,{k_grok_b64}" download="TW_Grok_Prompts_{k_c}.docx">'
+                    f'Download TW Grok Prompts (.docx)</a>'
                 )
                 st.sidebar.markdown(k_grok_href, unsafe_allow_html=True)
                 # ── Build presentation ────────────────────────────────
