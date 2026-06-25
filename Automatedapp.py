@@ -2518,8 +2518,15 @@ if date_selected and industry_provided :# File Upload Section
             bn_match = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Bureau News', client_column]
             bureau_articles = bn_match.values[0] if not bn_match.empty else 0
             individual_articles = client_sov - bureau_articles
-            bureau_percentage = int(round((bureau_articles / client_sov) * 100, 0))
-            individual_percentage = int(round((individual_articles / client_sov) * 100, 0))
+            client_sov = pd.to_numeric(client_sov, errors='coerce')
+            client_sov = client_sov if pd.notna(client_sov) and client_sov != 0 else 0
+            
+            if client_sov > 0:
+                bureau_percentage = int(round((bureau_articles / client_sov) * 100, 0))
+                individual_percentage = int(round((individual_articles / client_sov) * 100, 0))
+            else:
+                bureau_percentage = 0
+                individual_percentage = 0
             filtered_df = Unique_Articles[~Unique_Articles['Journalist'].isin(['Total', 'Bureau News'])]
             total_journalists = len(filtered_df)
             total_articles = filtered_df[filtered_df['Total'].notna() & (filtered_df['Total'] > 0)]['Total'].sum()
