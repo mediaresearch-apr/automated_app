@@ -2379,6 +2379,7 @@ if date_selected and industry_provided :# File Upload Section
             Jour_tableu = Jour_tableu[Jour_tableu['Journalist'] != 'Bureau News']
             Jour_tableu = pd.concat([Jour_tableu, bn_rowu], ignore_index=True)
             Jour_tableu.loc['Total'] = Jour_tableu.sum(numeric_only=True, axis=0)
+            Jour_tableu.loc['Total', 'Journalist'] = 'Total'   # ← add this line
             columns_to_convert = Jour_tableu.columns.difference(['Journalist', 'Publication Name'])
             Jour_tableu[columns_to_convert] = Jour_tableu[columns_to_convert].astype(int)
             Jour_tableu.insert(1, 'Publication Name', Jour_tableu.pop('Publication Name'))
@@ -2425,6 +2426,8 @@ if date_selected and industry_provided :# File Upload Section
             pubs_table = pubs_table[ordered_cols]
             pubs_table = pubs_table.sort_values('Total', ascending=False).round()
             pubs_table.loc['Total'] = pubs_table.sum(numeric_only=True, axis=0)
+            pubs_table.loc['Total', 'Publication Name'] = 'Total'   # ← add this line
+
             pubs_table['Client %'] = ((pubs_table[client_columndt] / pubs_table['Total']) * 100).round().astype(int)
             numeric_columns = pubs_table.select_dtypes(include=['number']).columns
             pubs_table[numeric_columns] = pubs_table[numeric_columns].astype(int)
