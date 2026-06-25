@@ -2515,10 +2515,11 @@ if date_selected and industry_provided :# File Upload Section
             top10_pub_perc = int(round(( top10_pub_sum / client_sov_count) * 100))
 
             client_sov = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Total',client_column].values[0]
-            bureau_articles = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Bureau News',client_column].values[0]
-            individual_articles = client_sov-bureau_articles
-            bureau_percentage = int(round((bureau_articles / client_sov) * 100,0))
-            individual_percentage = int(round((individual_articles / client_sov) * 100,0))
+            bn_match = Unique_Articles.loc[Unique_Articles['Journalist'] == 'Bureau News', client_column]
+            bureau_articles = bn_match.values[0] if not bn_match.empty else 0
+            individual_articles = client_sov - bureau_articles
+            bureau_percentage = int(round((bureau_articles / client_sov) * 100, 0))
+            individual_percentage = int(round((individual_articles / client_sov) * 100, 0))
             filtered_df = Unique_Articles[~Unique_Articles['Journalist'].isin(['Total', 'Bureau News'])]
             total_journalists = len(filtered_df)
             total_articles = filtered_df[filtered_df['Total'].notna() & (filtered_df['Total'] > 0)]['Total'].sum()
