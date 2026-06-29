@@ -2235,7 +2235,7 @@ if date_selected and industry_provided :
                 st.sidebar.markdown(k_grok_href, unsafe_allow_html=True)
                 # ── Build presentation ────────────────────────────────
 if date_selected and industry_provided :# File Upload Section
-    st.sidebar.write("## Upload an Online or Print file for tables")
+    st.sidebar.write("## Upload an Print file for tables")
     file = st.sidebar.file_uploader("Upload Data File (Excel or CSV)", type=["xlsx", "csv"])
     if file:
         st.sidebar.write("File Uploaded Successfully!")
