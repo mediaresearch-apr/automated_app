@@ -2403,6 +2403,27 @@ if date_selected and industry_provided :# File Upload Section
             Unique_Articles['Client %'] = (
     (Unique_Articles[client_columndt] / Unique_Articles['Total']) * 100
 ).replace([float('inf'), float('-inf')], 0).fillna(0).round().astype(int)
+
+            # ── FIX: force the Total row to match SOV exactly ──────────────────
+            sov_lookup = dict(zip(Entity_SOV3['Entity'], Entity_SOV3['News Count']))
+            total_idx = Unique_Articles[Unique_Articles['Journalist'] == 'Total'].index
+            
+            for _col in Unique_Articles.columns:
+                if _col in sov_lookup and _col not in ['Total', 'Client %', 'Journalist', 'Publication Name']:
+                    Unique_Articles.loc[total_idx, _col] = int(sov_lookup[_col])
+            
+            # Total Unique Articles = sum of unique articles across all journalists (excluding the Total row itself)
+            grand_unique_total = int(
+                Unique_Articles.loc[Unique_Articles['Journalist'] != 'Total', 'Total'].sum()
+            )
+            Unique_Articles.loc[total_idx, 'Total'] = grand_unique_total
+            
+            # Recalculate Client % for the Total row using the corrected numbers
+            grand_client_val = Unique_Articles.loc[total_idx, client_columndt].values[0]
+            if grand_unique_total > 0:
+                Unique_Articles.loc[total_idx, 'Client %'] = int(round((grand_client_val / grand_unique_total) * 100))
+            else:
+                Unique_Articles.loc[total_idx, 'Client %'] = 0
             pub_table1 = pd.crosstab(finaldata_non_exploded['Publication Name'], finaldata_non_exploded['Entity'])
             pub_table1 = pub_table1.reset_index(level=0)
             finaldatauq = finaldata_non_exploded.copy()
@@ -3159,7 +3180,7 @@ if date_selected and industry_provided :# File Upload Section
                 dfs = [
     strip_client_prefix(Entity_SOV3),
     strip_client_prefix(sov_dt11),
-    strip_client_prefix(pubs_table1),
+    strip_client_prefix(pubs_table20),
     strip_client_prefix(Unique_Articles2O),
     strip_client_prefix(PType_Entity),
     strip_client_prefix(Jour_Comp),
