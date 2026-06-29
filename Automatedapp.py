@@ -3180,7 +3180,7 @@ if date_selected and industry_provided :# File Upload Section
                 dfs = [
     strip_client_prefix(Entity_SOV3),
     strip_client_prefix(sov_dt11),
-    strip_client_prefix(pubs_table20),
+    strip_client_prefix(pubs_table2O),
     strip_client_prefix(Unique_Articles2O),
     strip_client_prefix(PType_Entity),
     strip_client_prefix(Jour_Comp),
