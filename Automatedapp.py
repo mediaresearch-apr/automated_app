@@ -2260,6 +2260,7 @@ if date_selected and industry_provided :# File Upload Section
                 data.drop_duplicates(subset=['Date', 'Entity', 'Hit Sentence', 'Publication Name'], keep='first', inplace=True, ignore_index=True)
                 
             finaldata = data
+            raw_data_for_pubtype = data.copy()  # save before dedup
             finaldata['Date'] = pd.to_datetime(finaldata['Date']).dt.normalize()
             competitors = [ent for ent in finaldata['Entity'].unique() if not ent.startswith("Client-")]
             if len(competitors) > 1:
@@ -2447,13 +2448,26 @@ if date_selected and industry_provided :# File Upload Section
             ordered_cols = ['Publication Name', client_columndt] + [ent for ent in sov_order_no_client if ent in pubs_table.columns] + (['Total'] if 'Total' in pubs_table.columns else [])
             pubs_table = pubs_table[ordered_cols]
             pubs_table = pubs_table.sort_values('Total', ascending=False).round()
-            pubs_table.loc['Total'] = pubs_table.sum(numeric_only=True, axis=0)
-            pubs_table.loc['Total', 'Publication Name'] = 'Total'   # ← add this line
 
-            pubs_table['Client %'] = ((pubs_table[client_columndt] / pubs_table['Total']) * 100).round().astype(int)
+            pubs_table.loc['Total'] = pubs_table.sum(numeric_only=True, axis=0)
+            pubs_table.loc['Total', 'Publication Name'] = 'Total'
+            
+            # ── Override entity columns in Total row to match SOV exactly ──
+            sov_lookup_pub = dict(zip(Entity_SOV3['Entity'], Entity_SOV3['News Count']))
+            for _col in pubs_table.columns:
+                if _col in sov_lookup_pub:
+                    pubs_table.loc['Total', _col] = int(sov_lookup_pub[_col])
+            
+            # Override Total in Total row to match SOV grand total
+            pubs_table.loc['Total', 'Total'] = int(Entity_SOV3.loc[Entity_SOV3['Entity'] == 'Total', 'News Count'].values[0])
+            
+            # ── Recalculate Client % for ALL rows (Total row now uses corrected SOV values) ──
+            pubs_table['Client %'] = (
+                (pubs_table[client_columndt] / pubs_table['Total']) * 100
+            ).round().fillna(0).astype(int)
+            
             numeric_columns = pubs_table.select_dtypes(include=['number']).columns
             pubs_table[numeric_columns] = pubs_table[numeric_columns].astype(int)
-            
             pubs_table1 = pubs_table.head(10)
             pubs_table2O=  pubs_table.head(20)
             pubs_table2O =pubs_table2O.rename(columns= {'Total': 'Total Unique Articles'})
@@ -2578,7 +2592,7 @@ if date_selected and industry_provided :# File Upload Section
             PP_table.loc['GrandTotal'] = PP_table.sum(numeric_only=True, axis=0)
             
             #Publication Name & Entity Table
-            PT_Entity = pd.crosstab(finaldata_non_exploded['Publication Type'], finaldata_non_exploded['Entity'])
+            PT_Entity = pd.crosstab(raw_data_for_pubtype['Publication Type'], raw_data_for_pubtype['Entity'])
             PT_Entity['Total'] = PT_Entity.sum(axis=1)
             PType_Entity = PT_Entity.sort_values('Total', ascending=False).round()
             PType_Entity.loc['Total'] = PType_Entity.sum(numeric_only=True, axis=0)
